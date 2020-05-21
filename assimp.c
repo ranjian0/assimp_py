@@ -397,7 +397,6 @@ static void process_materials(Scene *py_scene, const struct aiScene *c_scene) {
     for(uint i=0; i<c_scene->mNumMaterials; i++) {
         PyList_SetItem(py_scene->materials, i, props_from_material(c_scene->mMaterials[i]));
     }
-    printf("Scene Texture Count %d\n", c_scene->mNumTextures);
 }
 
 // - Assimp Wrapper for aiImportFile
