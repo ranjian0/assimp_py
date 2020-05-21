@@ -17,10 +17,7 @@ else:
 
     prefix = os.path.dirname(os.path.abspath(__file__))
     path = os.path.join(prefix, "bin")
-
-    print "Adding %s to the system path." % path
     os.environ['PATH'] = '%s;%s' % (path, os.environ['PATH'])
-
     clcache_exe = os.path.join(path, "clcache.exe")
 
 
