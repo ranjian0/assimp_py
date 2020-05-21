@@ -3,11 +3,25 @@ import conf
 from sys import platform as _platform
 from distutils.core import setup, Extension
 
-#------------------------------------------------------------------------------
+
 # Enable ccache to speed up builds
 ON_LINUX = "linux" in _platform
 if ON_LINUX:
     os.environ['CC'] = 'ccache gcc'
+
+# Windows
+else:
+    # Using clcache.exe, see: https://github.com/frerich/clcache
+
+    # Insert path to clcache.exe into the path.
+
+    prefix = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(prefix, "bin")
+
+    print "Adding %s to the system path." % path
+    os.environ['PATH'] = '%s;%s' % (path, os.environ['PATH'])
+
+    clcache_exe = os.path.join(path, "clcache.exe")
 
 
 # monkey-patch for parallel compilation
@@ -16,7 +30,7 @@ import multiprocessing.pool
 
 
 def parallelCCompile(self, sources, output_dir=None, macros=None, include_dirs=None,
-    debug=0, extra_preargs=None, extra_postargs=None, depends=None):
+                     debug=0, extra_preargs=None, extra_postargs=None, depends=None):
 
     # those lines are copied from distutils.ccompiler.CCompiler directly
     macros, objects, extra_postargs, pp_opts, build = self._setup_compile(
@@ -65,11 +79,9 @@ def main():
           author="<Ian Ichung'wah>",
           author_email="karanjaichungwa@gmail.com",
           ext_modules=[Extension("assimp",
-                sources=conf.ASSIMP_SOURCES + ["assimp.c"],
-                define_macros=conf.ASSIMP_DEFINES,
-                include_dirs=conf.ASSIMP_INCLUDE_DIRS)]
-          )
-
+                       sources=conf.ASSIMP_SOURCES + ["assimp.c"],
+                       define_macros=conf.ASSIMP_DEFINES,
+                       include_dirs=conf.ASSIMP_INCLUDE_DIRS)])
 
 if __name__ == "__main__":
     main()
