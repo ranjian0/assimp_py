@@ -78,14 +78,6 @@ static PyTypeObject MeshType = {
     .tp_members=Mesh_members,
 };
 
-
-// Material
-typedef struct {
-    PyObject_HEAD
-    PyDictObject *properties;
-} Material;
-
-
 // Scene
 typedef struct {
     PyObject_HEAD
