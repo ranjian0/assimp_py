@@ -1,9 +1,9 @@
-# ASSIMP-PY
+# assimp-py
 
 Minimal Python Bindings for ASSIMP Librarry using C-API
 
 
-# Example
+# Example Program
 
 ```python
 import assimp
