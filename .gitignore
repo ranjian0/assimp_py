@@ -95,8 +95,8 @@ ENV/
 
 # pytest
 .pytest_cache
-.config
-.creator
-.user
-.files
-.include
+*.config
+*.creator
+*.user
+*.files
+*.includes
