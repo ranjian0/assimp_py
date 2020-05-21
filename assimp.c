@@ -413,11 +413,22 @@ static PyObject* ImportFile(PyObject *self, PyObject *args) {
         PyErr_SetString(PyExc_ValueError, "Invalid Arguments! Expected (str, int)");
         return (PyObject*)NULL;
     }
-    const struct aiScene *scene = aiImportFile(filename, flags);
-    if (!scene) {
-        PyErr_SetString(PyExc_ValueError, "Could not Import file! Ensure you have set a valide path.");
+    // Check if given filename exists
+    FILE *f = fopen(filename, "r");
+    if(f) {
+        fclose(f);
+    } else {
+        PyErr_SetString(PyExc_ValueError, "File does not exist!");
         return (PyObject*)NULL;
     }
+
+    // Load the scene
+    const struct aiScene *scene = aiImportFile(filename, flags);
+    if (!scene) {
+        PyErr_SetString(PyExc_ValueError, "Could not Import the file!");
+        return (PyObject*)NULL;
+    }
+
     Scene *pyscene = (Scene*)(SceneType.tp_alloc(&SceneType, 0));
     process_meshes(pyscene, scene);
     process_materials(pyscene, scene);
