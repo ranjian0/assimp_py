@@ -1,4 +1,5 @@
 #define PY_SSIZE_T_CLEAN
+#include <string.h>
 #include <Python.h>
 #include <structmember.h>
 
@@ -89,13 +90,19 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     PyObject *meshes;
+    unsigned int num_meshes;
+
     PyObject *materials;
+    unsigned int num_materials;
 
 } Scene;
 
 static int Scene_init(Scene *scene, PyObject *args, PyObject *kwds) {
     scene->meshes = Py_None;
     scene->materials = Py_None;
+
+    scene->num_meshes = 0;
+    scene->num_materials = 0;
     return 1;
 }
 
@@ -105,20 +112,13 @@ static void Scene_dealloc(Scene *scene) {
     Py_TYPE(scene)->tp_free(scene);
 }
 
-static PyObject* Scene_get_meshes(Scene *scene, void *closure) {
-    Py_INCREF(scene->meshes);
-    return scene->meshes;
-}
+static PyMemberDef Scene_members[] = {
+    {"meshes", T_OBJECT, offsetof(Scene, meshes), READONLY, NULL},
+    {"materials", T_OBJECT, offsetof(Scene, materials), READONLY, NULL},
 
-static PyObject* Scene_get_materials(Scene *scene, void *closure) {
-    Py_INCREF(scene->materials);
-    return scene->materials;
-}
-
-static PyGetSetDef Scene_getsetters[] = {
-    {"meshes", (getter)Scene_get_meshes, NULL, NULL},
-    {"materials", (getter)Scene_get_materials, NULL, NULL},
-    {NULL}
+    {"num_meshes", T_UINT, offsetof(Scene, num_meshes), READONLY, NULL},
+    {"num_materials", T_UINT, offsetof(Scene, num_materials), READONLY, NULL},
+    {NULL},
 };
 
 static PyTypeObject SceneType = {
@@ -131,7 +131,7 @@ static PyTypeObject SceneType = {
     .tp_flags=Py_TPFLAGS_DEFAULT,
     .tp_init=(initproc)Scene_init,
     .tp_dealloc=(destructor)Scene_dealloc,
-    .tp_getset=Scene_getsetters,
+    .tp_members=Scene_members,
 };
 
 // - Scene Processing Methods
@@ -178,8 +178,174 @@ static PyObject* list_from_col4d(struct aiColor4D *arr, uint size) {
     return items;
 }
 
+static char* get_prop_name(char* prop) {
+    if (strcmp(prop, "?mat.name") == 0)
+        return "NAME";
+    else if (strcmp(prop, "$mat.twosided") == 0)
+        return "TWOSIDED";
+    else if (strcmp(prop, "$mat.shadingm") == 0)
+        return "SHADING_MODEL";
+    else if (strcmp(prop, "$mat.wireframe") == 0)
+        return "ENABLE_WIREFRAME";
+    else if (strcmp(prop, "$mat.blend") == 0)
+        return "BLEND_FUNC";
+    else if (strcmp(prop, "$mat.opacity") == 0)
+        return "OPACITY";
+    else if (strcmp(prop, "$mat.bumpscaling") == 0)
+        return "BUMPSCALING";
+    else if (strcmp(prop, "$mat.shininess") == 0)
+        return "SHININESS";
+    else if (strcmp(prop, "$mat.reflectivity") == 0)
+        return "REFLECTIVITY";
+    else if (strcmp(prop, "$mat.shinpercent") == 0)
+        return "SHININESS_STRENGTH";
+    else if (strcmp(prop, "$mat.refracti") == 0)
+        return "REFRACTI";
+    else if (strcmp(prop, "$clr.diffuse") == 0)
+        return "COLOR_DIFFUSE";
+    else if (strcmp(prop, "$clr.ambient") == 0)
+        return "COLOR_AMBIENT";
+    else if (strcmp(prop, "$clr.specular") == 0)
+        return "COLOR_SPECULAR";
+    else if (strcmp(prop, "$clr.emissive") == 0)
+        return "COLOR_EMISSIVE";
+    else if (strcmp(prop, "$clr.transparent") == 0)
+        return "COLOR_TRANSPARENT";
+    else if (strcmp(prop, "$clr.reflective") == 0)
+        return "COLOR_REFLECTIVE";
+    else if (strcmp(prop, "?bg.global") == 0)
+        return "GLOBAL_BACKGROUND_IMAGE";
+    else if (strcmp(prop, "$tex.file") == 0)
+        return "TEXTURE_BASE";
+    else if (strcmp(prop, "$tex.mapping") == 0)
+        return "MAPPING_BASE";
+    else if (strcmp(prop, "$tex.flags") == 0)
+        return "TEXFLAGS_BASE";
+    else if (strcmp(prop, "$tex.uvwsrc") == 0)
+        return "UVWSRC_BASE";
+    else if (strcmp(prop, "$tex.mapmodev") == 0)
+        return "MAPPINGMODE_V_BASE";
+    else if (strcmp(prop, "$tex.mapaxis") == 0)
+        return "TEXMAP_AXIS_BASE";
+    else if (strcmp(prop, "$tex.blend") == 0)
+        return "TEXBLEND_BASE";
+    else if (strcmp(prop, "$tex.uvtrafo") == 0)
+        return "UVTRANSFORM_BASE";
+    else if (strcmp(prop, "$tex.op") == 0)
+        return "TEXOP_BASE";
+    else if (strcmp(prop, "$tex.mapmodeu") == 0)
+        return "MAPPINGMODE_U_BASE";
+    else
+        return "NONE";
+}
+
+static PyObject* props_from_material(struct aiMaterial *mat) {
+    PyObject *prop_val;
+    PyObject *props = PyDict_New();
+
+    int result;
+    int ival[16];
+    float fval[16];
+    struct aiString sval;
+    unsigned int arr_size;
+    for(uint i=0; i<mat->mNumProperties; i++) {
+        struct aiMaterialProperty *prop = mat->mProperties[i];
+
+        switch(prop->mType) {
+            case aiPTI_String:
+                result = aiGetMaterialString(mat, prop->mKey.data, -1, 0, &sval);
+                break;
+            case aiPTI_Float:
+                arr_size = 16;
+                result = aiGetMaterialFloatArray(mat, prop->mKey.data, -1, 0, fval, &arr_size);
+                break;
+            case aiPTI_Integer:
+                arr_size = 16;
+                result = aiGetMaterialIntegerArray(mat, prop->mKey.data, -1, 0, ival, &arr_size);
+                break;
+            default:
+                continue;
+        }
+
+        if(result == aiReturn_FAILURE) {
+            continue;
+        } else if(result == aiReturn_OUTOFMEMORY) {
+            PyErr_SetString(PyExc_MemoryError, "Memory Error Creating material Properties");
+            return props;
+        }
+
+        switch(prop->mType) {
+            case aiPTI_String:
+                prop_val = PyUnicode_FromString(sval.data);
+                break;
+            case aiPTI_Float:
+                if(arr_size == 1) {
+                    prop_val = PyFloat_FromDouble(fval[0]);
+                } else {
+                    prop_val = PyList_New(arr_size);
+                    for(uint j=0; j<arr_size; j++) {
+                        PyList_SetItem(prop_val, j, PyFloat_FromDouble(fval[j]));
+                    }
+                }
+                break;
+            case aiPTI_Integer:
+                if(arr_size == 1) {
+                    prop_val = PyLong_FromLong(ival[0]);
+                } else {
+                    prop_val = PyList_New(arr_size);
+                    for(uint j=0; j<arr_size; j++) {
+                        PyList_SetItem(prop_val, j, PyLong_FromLong(ival[j]));
+                    }
+                }
+                break;
+             default:
+                prop_val = Py_None;
+                break;
+        }
+
+        PyDict_SetItem(props, PyUnicode_FromString(get_prop_name(prop->mKey.data)), prop_val);
+    }
+
+    // Load Textures
+    struct aiString texture_path;
+    PyObject *texture_dict = PyDict_New();
+    enum aiTextureType TexTypes[13] = {
+        aiTextureType_NONE,
+        aiTextureType_DIFFUSE,
+        aiTextureType_SPECULAR,
+        aiTextureType_AMBIENT,
+        aiTextureType_EMISSIVE,
+        aiTextureType_HEIGHT,
+        aiTextureType_NORMALS,
+        aiTextureType_SHININESS,
+        aiTextureType_OPACITY,
+        aiTextureType_DISPLACEMENT,
+        aiTextureType_LIGHTMAP,
+        aiTextureType_REFLECTION,
+        aiTextureType_UNKNOWN,
+    };
+
+    for(int i=0; i<13; i++) {
+        uint tex_count = aiGetMaterialTextureCount(mat, TexTypes[i]);
+        if (tex_count < 1)
+            continue;
+
+        PyObject *textures = PyList_New(tex_count);
+        for(uint j=0; j<tex_count; j++) {
+            aiGetMaterialTexture(mat, TexTypes[i], j, &texture_path, NULL, NULL, NULL, NULL, NULL, NULL);
+            PyList_SetItem(textures, j, PyUnicode_FromString(texture_path.data));
+        }
+        PyDict_SetItem(texture_dict, PyLong_FromLong(TexTypes[i]), textures);
+    }
+
+    PyDict_SetItem(props, PyUnicode_FromString("TEXTURES"), texture_dict);
+    return props;
+}
+
 static void process_meshes(Scene *py_scene, const struct aiScene *c_scene) {
     uint num_meshes = c_scene->mNumMeshes;
+
+    py_scene->num_meshes = num_meshes;
     py_scene->meshes = PyList_New(num_meshes);
 
     for(uint i = 0; i < num_meshes; i++) {
@@ -226,7 +392,12 @@ static void process_meshes(Scene *py_scene, const struct aiScene *c_scene) {
 }
 
 static void process_materials(Scene *py_scene, const struct aiScene *c_scene) {
-    py_scene->materials = PyList_New(0);
+    py_scene->num_materials = c_scene->mNumMaterials;
+    py_scene->materials = PyList_New(c_scene->mNumMaterials);
+    for(uint i=0; i<c_scene->mNumMaterials; i++) {
+        PyList_SetItem(py_scene->materials, i, props_from_material(c_scene->mMaterials[i]));
+    }
+    printf("Scene Texture Count %d\n", c_scene->mNumTextures);
 }
 
 // - Assimp Wrapper for aiImportFile
@@ -271,6 +442,21 @@ int Initialize_Types(PyObject* module) {
 }
 
 void Initialize_Constants(PyObject *module) {
+    /* Texture Types */
+    PyModule_AddIntConstant(module, "TextureType_NONE", aiTextureType_NONE);
+    PyModule_AddIntConstant(module, "TextureType_DIFFUSE", aiTextureType_DIFFUSE);
+    PyModule_AddIntConstant(module, "TextureType_SPECULAR", aiTextureType_SPECULAR);
+    PyModule_AddIntConstant(module, "TextureType_AMBIENT", aiTextureType_AMBIENT);
+    PyModule_AddIntConstant(module, "TextureType_EMISSIVE", aiTextureType_EMISSIVE);
+    PyModule_AddIntConstant(module, "TextureType_HEIGHT", aiTextureType_HEIGHT);
+    PyModule_AddIntConstant(module, "TextureType_NORMALS", aiTextureType_NORMALS);
+    PyModule_AddIntConstant(module, "TextureType_SHININESS", aiTextureType_SHININESS);
+    PyModule_AddIntConstant(module, "TextureType_OPACITY", aiTextureType_OPACITY);
+    PyModule_AddIntConstant(module, "TextureType_DISPLACEMENT", aiTextureType_DISPLACEMENT);
+    PyModule_AddIntConstant(module, "TextureType_LIGHTMAP", aiTextureType_LIGHTMAP);
+    PyModule_AddIntConstant(module, "TextureType_REFLECTION", aiTextureType_REFLECTION);
+    PyModule_AddIntConstant(module, "TextureType_UNKNOWN", aiTextureType_UNKNOWN);
+
     /* Add postprocess steps */
     PyModule_AddIntConstant(module, "Process_CalcTangentSpace", aiProcess_CalcTangentSpace);
     PyModule_AddIntConstant(module, "Process_JoinIdenticalVertices", aiProcess_JoinIdenticalVertices);
