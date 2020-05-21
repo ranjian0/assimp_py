@@ -80,5 +80,6 @@ def main():
                        define_macros=conf.ASSIMP_DEFINES,
                        include_dirs=conf.ASSIMP_INCLUDE_DIRS)])
 
+
 if __name__ == "__main__":
     main()
