@@ -6,13 +6,18 @@ def float_eq(a, b):
     return math.isclose(a, b, rel_tol=1e-6)
 
 
-def test_Funcs():
+def test_Import():
     scene = assimp.ImportFile("models/planet.obj", 1)
     assert(scene)
+    assert(scene.meshes)
+    assert(scene.materials)
 
+"""
+def test_Relese():
     release = assimp.ReleaseImporter()
     assert(release is None)
 
+def test_Error():
     error = assimp.GetErrorString()
     assert(error == "")
 
@@ -61,3 +66,12 @@ def test_Color4d():
     assert(float_eq(g, .3))
     assert(float_eq(b, .3))
     assert(float_eq(a, 1.))
+
+
+def test_Scene():
+    scene = assimp.Scene("models/planet.obj", 1)
+    assert(scene)
+
+    assert(scene.num_meshes)
+    assert(scene.meshes)
+"""
