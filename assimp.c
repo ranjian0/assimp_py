@@ -29,7 +29,7 @@ typedef struct {
 
 static PyMemberDef Mesh_members[] = {
     {"name", T_STRING, offsetof(Mesh, name), READONLY, NULL},
-    {"materials_index", T_UINT, offsetof(Mesh, material_index), READONLY, NULL},
+    {"material_index", T_UINT, offsetof(Mesh, material_index), READONLY, NULL},
     {"num_uv_components", T_OBJECT, offsetof(Mesh, num_uv_components), READONLY, NULL},
 
     {"faces", T_OBJECT, offsetof(Mesh, faces), READONLY, NULL},
@@ -411,9 +411,13 @@ static PyObject* ImportFile(PyObject *self, PyObject *args) {
     unsigned int flags;
     if(!PyArg_ParseTuple(args, "si", &filename, &flags)) {
         PyErr_SetString(PyExc_ValueError, "Invalid Arguments! Expected (str, int)");
-        return Py_None;
+        return (PyObject*)NULL;
     }
     const struct aiScene *scene = aiImportFile(filename, flags);
+    if (!scene) {
+        PyErr_SetString(PyExc_ValueError, "Could not Import file! Ensure you have set a valide path.");
+        return (PyObject*)NULL;
+    }
     Scene *pyscene = (Scene*)(SceneType.tp_alloc(&SceneType, 0));
     process_meshes(pyscene, scene);
     process_materials(pyscene, scene);
