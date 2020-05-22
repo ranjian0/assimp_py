@@ -8,7 +8,6 @@
 #include "assimp/postprocess.h"
 
 
-
 // Mesh
 typedef struct {
     PyObject_HEAD
@@ -343,6 +342,7 @@ static void process_meshes(Scene *py_scene, const struct aiScene *c_scene) {
     for(uint i = 0; i < num_meshes; i++) {
         struct aiMesh *m = c_scene->mMeshes[i];
         Mesh *pymesh = (Mesh*)(MeshType.tp_alloc(&MeshType, 0));
+        Py_INCREF(pymesh);
 
         pymesh->name = m->mName.data;
         pymesh->num_faces = m->mNumFaces;
@@ -416,7 +416,7 @@ static PyObject* ImportFile(PyObject *self, PyObject *args) {
 
     // Load the scene
     const struct aiScene *scene = aiImportFile(filename, flags);
-    if (!scene) {
+    if (!scene || !scene->mRootNode) {
         PyErr_SetString(PyExc_ValueError, "Could not Import the file!");
         return (PyObject*)NULL;
     }
