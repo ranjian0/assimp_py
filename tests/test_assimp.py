@@ -28,7 +28,7 @@ def test_mesh_members(main_scene):
     mesh = main_scene.meshes[-1]
 
     # -- ensure mesh properties
-    assert(mesh.name == 'Plane')
+    assert(mesh.name == 'Cyborg')
     assert(mesh.material_index == 1)
     assert(mesh.num_uv_components)
 
