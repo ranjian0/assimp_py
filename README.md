@@ -12,7 +12,7 @@ import assimp
 process_flags = (
     assimp.Process_Triangulate | assimp.Process_CalcTangentSpace
 )
-scene = assimp.ImportFile("models/planet.planet.obj", process_flags)
+scene = assimp.ImportFile("models/planet/planet.obj", process_flags)
 
 # -- getting data
 for m in scene.meshes:
