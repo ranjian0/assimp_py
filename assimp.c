@@ -7,14 +7,17 @@
 #include "assimp/cimport.h"
 #include "assimp/postprocess.h"
 
+#ifndef uint
+#define uint unsigned int
+#endif
 
 // Mesh
 typedef struct {
     PyObject_HEAD
     const char* name;
-    unsigned int num_faces;
-    unsigned int num_vertices;
-    unsigned int material_index;
+    uint num_faces;
+    uint num_vertices;
+    uint material_index;
     PyObject* num_uv_components;
 
     PyObject *faces;
@@ -81,10 +84,10 @@ static PyTypeObject MeshType = {
 typedef struct {
     PyObject_HEAD
     PyObject *meshes;
-    unsigned int num_meshes;
+    uint num_meshes;
 
     PyObject *materials;
-    unsigned int num_materials;
+    uint num_materials;
 
 } Scene;
 
@@ -238,7 +241,7 @@ static PyObject* props_from_material(struct aiMaterial *mat) {
     int ival[16];
     float fval[16];
     struct aiString sval;
-    unsigned int arr_size;
+    uint arr_size;
     for(uint i=0; i<mat->mNumProperties; i++) {
         struct aiMaterialProperty *prop = mat->mProperties[i];
 
@@ -400,7 +403,7 @@ PyDoc_STRVAR(import_doc,
 
 static PyObject* ImportFile(PyObject *self, PyObject *args) {
     const char* filename;
-    unsigned int flags;
+    uint flags;
     if(!PyArg_ParseTuple(args, "si", &filename, &flags)) {
         PyErr_SetString(PyExc_ValueError, "Invalid Arguments! Expected (str, int)");
         return (PyObject*)NULL;
