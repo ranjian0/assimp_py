@@ -4,23 +4,6 @@ from sys import platform as _platform
 from distutils.core import setup, Extension
 
 
-# Enable ccache to speed up builds
-ON_LINUX = "linux" in _platform
-if ON_LINUX:
-    os.environ['CC'] = 'ccache gcc'
-
-# Windows
-else:
-    # Using clcache.exe, see: https://github.com/frerich/clcache
-
-    # Insert path to clcache.exe into the path.
-
-    prefix = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(prefix, "bin")
-    os.environ['PATH'] = '%s;%s' % (path, os.environ['PATH'])
-    clcache_exe = os.path.join(path, "clcache.exe")
-
-
 # monkey-patch for parallel compilation
 import multiprocessing
 import multiprocessing.pool
