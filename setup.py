@@ -1,5 +1,7 @@
 import os
 import conf
+import pathlib
+import setuptools
 from sys import platform as _platform
 from distutils.core import setup, Extension
 
@@ -52,14 +54,28 @@ import distutils.ccompiler
 distutils.ccompiler.CCompiler.compile = parallelCCompile
 
 
+# The directory containing this file
+HERE = pathlib.Path(__file__).parent
+README = (HERE/"README.md").read_text()
+
+
 def main():
     setup(name="assimp",
           version="1.0.0",
-          description="Python interface for the assimp library",
-          author="<Ian Ichung'wah>",
+          long_description=README,
+          long_description_content_type="text/markdown",
+          description="Minimal Python Bindings for ASSIMP Library using C-API",
+          author="Ian Ichung'wah",
           author_email="karanjaichungwa@gmail.com",
-          ext_modules=[Extension("assimp",
-                       sources=conf.ASSIMP_SOURCES + ["assimp.c"],
+          license="MIT",
+          classifiers=[
+              "License :: OSI Approved :: MIT License",
+              "Programming Language :: Python :: 3",
+              "Programming Language :: Python :: 3.7",
+          ],
+          packages=["assimp"],
+          ext_modules=[Extension("assimp.assimp",
+                       sources=conf.ASSIMP_SOURCES + ["assimp/assimp.c"],
                        define_macros=conf.ASSIMP_DEFINES,
                        include_dirs=conf.ASSIMP_INCLUDE_DIRS)])
 
