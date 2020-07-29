@@ -39,7 +39,7 @@ def parallelCCompile(self, sources, output_dir=None, macros=None, include_dirs=N
         newcc_args = cc_args
         if _platform == "darwin":
             if src.endswith('.cpp'):
-                newcc_args = cc_args + ["-mmacosx-version-min=10.7", "-stdlib=libc++"]
+                newcc_args = cc_args + ["-mmacosx-version-min=10.7", "-stdlib=libc++", "-std=c++11"]
         self._compile(obj, src, ext, newcc_args, extra_postargs, pp_opts)
 
     # convert to list, imap is evaluated on-demand
