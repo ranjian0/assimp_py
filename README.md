@@ -8,13 +8,13 @@ Minimal Python Bindings for ASSIMP Library using C-API
 # Example Program
 
 ```python
-import assimp
+import assimp_py
 
 # -- loading the scene
 process_flags = (
-    assimp.Process_Triangulate | assimp.Process_CalcTangentSpace
+    assimp_py.Process_Triangulate | assimp_py.Process_CalcTangentSpace
 )
-scene = assimp.ImportFile("models/planet/planet.obj", process_flags)
+scene = assimp_py.ImportFile("models/planet/planet.obj", process_flags)
 
 # -- getting data
 for m in scene.meshes:
@@ -36,5 +36,5 @@ for m in scene.meshes:
     diffuse_color = mat["COLOR_DIFFUSE"]
 
     # -- getting textures
-    diffuse_tex = mat["TEXTURES"][assimp.TextureType_DIFFUSE]
+    diffuse_tex = mat["TEXTURES"][assimp_py.TextureType_DIFFUSE]
 ```
