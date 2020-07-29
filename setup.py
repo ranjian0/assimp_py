@@ -53,7 +53,7 @@ distutils.ccompiler.CCompiler.compile = parallelCCompile
 
 
 COMPILE_ARGS = []
-if _platform.system() == 'Darwin':
+if _platform == 'Darwin':
     COMPILE_ARGS += ['-c', '-fPIC', '-w', '-O3', '-stdlib=libc++']
 else:
     COMPILE_ARGS += ['-c', '-fPIC', '-w', '-O2']
