@@ -2,7 +2,7 @@ import pytest
 import assimp_py
 from pathlib import Path
 
-ModelPath = Path(__file__).parent.parent.joinpath("models/cyborg/cyborg.obj")
+ModelPath = Path(__file__).parent.joinpath("models/cyborg/cyborg.obj")
 
 
 @pytest.fixture
