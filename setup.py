@@ -60,7 +60,7 @@ README = (HERE/"README.md").read_text()
 
 
 def main():
-    setup(name="assimp",
+    setup(name="assimp_py",
           version="1.0.0",
           long_description=README,
           long_description_content_type="text/markdown",
@@ -73,9 +73,9 @@ def main():
               "Programming Language :: Python :: 3",
               "Programming Language :: Python :: 3.7",
           ],
-          packages=["assimp"],
-          ext_modules=[Extension("assimp.assimp",
-                       sources=conf.ASSIMP_SOURCES + ["assimp/assimp.c"],
+          packages=["assimp_py"],
+          ext_modules=[Extension("assimp_py.assimp_py",
+                       sources=conf.ASSIMP_SOURCES + ["assimp_py/assimp_py.c"],
                        define_macros=conf.ASSIMP_DEFINES,
                        include_dirs=conf.ASSIMP_INCLUDE_DIRS)])
 

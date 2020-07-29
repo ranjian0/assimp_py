@@ -496,21 +496,21 @@ void Initialize_Constants(PyObject *module) {
     PyModule_AddIntConstant(module, "Process_GlobalScale", aiProcess_GlobalScale);
 }
 
-static PyMethodDef assimp_meths[] = {
+static PyMethodDef assimp_py_meths[] = {
     {"ImportFile", (PyCFunction)ImportFile, METH_VARARGS, import_doc},
     {NULL, NULL, 0, NULL},
 };
 
-static PyModuleDef assimp_mod = {
+static PyModuleDef assimp_py_mod = {
   PyModuleDef_HEAD_INIT,
-  "assimp",
+  "assimp_py",
   "Python C API to ASSIMP Library",
   -1,
-   assimp_meths,
+   assimp_py_meths,
 };
 
-PyMODINIT_FUNC PyInit_assimp() {
-    PyObject *mod = PyModule_Create(&assimp_mod);
+PyMODINIT_FUNC PyInit_assimp_py() {
+    PyObject *mod = PyModule_Create(&assimp_py_mod);
     Initialize_Constants(mod);
     if(Initialize_Types(mod) < 0) {
         return NULL;

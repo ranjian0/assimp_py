@@ -1,5 +1,5 @@
-import assimp
 import pytest
+import assimp_py
 from pathlib import Path
 
 ModelPath = Path(__file__).parent.parent.joinpath("models/cyborg/cyborg.obj")
@@ -8,9 +8,9 @@ ModelPath = Path(__file__).parent.parent.joinpath("models/cyborg/cyborg.obj")
 @pytest.fixture
 def main_scene():
     post_flags = (
-        assimp.Process_GenNormals | assimp.Process_CalcTangentSpace
+        assimp_py.Process_GenNormals | assimp_py.Process_CalcTangentSpace
     )
-    scn = assimp.ImportFile(str(ModelPath.absolute()), post_flags)
+    scn = assimp_py.ImportFile(str(ModelPath.absolute()), post_flags)
     return scn
 
 
