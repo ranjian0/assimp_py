@@ -52,6 +52,13 @@ import distutils.ccompiler
 distutils.ccompiler.CCompiler.compile = parallelCCompile
 
 
+COMPILE_ARGS = []
+if _platform.system() == 'Darwin':
+    COMPILE_ARGS += ['-c', '-fPIC', '-w', '-O3', '-stdlib=libc++']
+else:
+    COMPILE_ARGS += ['-c', '-fPIC', '-w', '-O2']
+
+
 def main():
     setup(name="assimp",
           version="1.0.0",
@@ -60,6 +67,7 @@ def main():
           author_email="karanjaichungwa@gmail.com",
           ext_modules=[Extension("assimp",
                        sources=conf.ASSIMP_SOURCES + ["assimp.c"],
+                       extra_compile_args=COMPILE_ARGS,
                        define_macros=conf.ASSIMP_DEFINES,
                        include_dirs=conf.ASSIMP_INCLUDE_DIRS)])
 
