@@ -1,5 +1,7 @@
 # assimp-py
 
+![Build Package](https://github.com/ranjian0/assimp-py/workflows/Build%20Package/badge.svg)
+
 Minimal Python Bindings for ASSIMP Library using C-API
 
 
