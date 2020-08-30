@@ -5,10 +5,10 @@ import setuptools
 from sys import platform as _platform
 from distutils.core import setup, Extension
 
-# Enable ccache to speed up builds
-ON_LINUX = "linux" in _platform
-if ON_LINUX:
-    os.environ['CC'] = 'ccache gcc'
+# Enable ccache to speed up builds (Development)
+# ON_LINUX = "linux" in _platform
+# if ON_LINUX:
+#     os.environ['CC'] = 'ccache gcc'
 
 
 # monkey-patch for parallel compilation
