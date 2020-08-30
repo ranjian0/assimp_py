@@ -12,15 +12,15 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v1
       with:
-        python-version: 3.8
+        python-version: 3.7
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install twine flake8
+        pip install twine
     - name: Build manylinux Python wheels
       uses: RalfG/python-wheels-manylinux-build@v0.3.1-manylinux2010_x86_64
       with:
-        python-versions: 'cp38-cp38m'
+        python-versions: 'cp37-cp37m'
     - name: Publish wheels to PyPI
       env:
         TWINE_USERNAME: ${{ secrets.TEST_PYPI_USERNAME }}
