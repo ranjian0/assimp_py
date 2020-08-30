@@ -5,6 +5,11 @@ import setuptools
 from sys import platform as _platform
 from distutils.core import setup, Extension
 
+# Enable ccache to speed up builds
+ON_LINUX = "linux" in _platform
+if ON_LINUX:
+    os.environ['CC'] = 'ccache gcc'
+
 
 # monkey-patch for parallel compilation
 import multiprocessing
@@ -71,7 +76,9 @@ def main():
           classifiers=[
               "License :: OSI Approved :: MIT License",
               "Programming Language :: Python :: 3",
+              "Programming Language :: Python :: 3.6"
               "Programming Language :: Python :: 3.7",
+              "Programming Language :: Python :: 3.8"
           ],
           packages=["assimp_py"],
           ext_modules=[Extension("assimp_py.assimp_py",
