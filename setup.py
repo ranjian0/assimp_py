@@ -61,7 +61,7 @@ README = (HERE/"README.md").read_text()
 
 def main():
     setup(name="assimp_py",
-          version="0.0.3",
+          version="0.0.4",
           long_description=README,
           long_description_content_type="text/markdown",
           description="Minimal Python Bindings for ASSIMP Library using C-API",
