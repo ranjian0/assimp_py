@@ -1,2 +1,3 @@
-recursive-include extern *
-include conf.py
+recursive-include assimp *
+recursive-include tests *
+include CMakeLists.txt
