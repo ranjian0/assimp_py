@@ -10,24 +10,21 @@ add_subdirectory(assimp)
 
 add_library(assimp_py SHARED assimp_py/assimp_py.c)
 
-set_target_properties(
-    assimp_py
-    PROPERTIES
-        PREFIX ""
-        OUTPUT_NAME assimp_py
-        # LINKER_LANGUAGE C
-        # LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-        # RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin  # only needed on windows
-)
 
-if(WIN32)
-    # python modules use this
-    set_target_properties(
-        assimp_py
-        PROPERTIES
-        SUFFIX ".pyd"
+if(NOT DEFINED PYTHON_MOD_SUFFIX)
+    execute_process(
+        COMMAND python3-config --extension-suffix
+        OUTPUT_VARIABLE _py_soabi
+        OUTPUT_STRIP_TRAILING_WHITESPACE
     )
+    message(STATUS, "Module Suffix --> ${_py_soabi}")
+    set(PYTHON_MOD_SUFFIX "${_py_soabi}" CACHE PATH INTERNAL)
+    unset(_py_soabi)
 endif()
+
+
+set_target_properties(assimp_py PROPERTIES PREFIX ""
+                                           SUFFIX "${PYTHON_MOD_SUFFIX}")
 
 target_include_directories(assimp_py PRIVATE ${PYTHON_INCLUDE_DIRS})
 target_link_libraries(assimp_py assimp ${PYTHON_LIBRARIES})
