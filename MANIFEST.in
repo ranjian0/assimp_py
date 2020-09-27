@@ -1,7 +1,6 @@
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
-
-recursive-include assimp_py *
 recursive-include assimp *
 recursive-include tests *
 include CMakeLists.txt
+include assimp_py.c

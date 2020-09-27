@@ -12,9 +12,9 @@ from distutils.version import LooseVersion
 
 class CMakeExtension(Extension):
 
-    def __init__(self, name, sourcedir=''):
+    def __init__(self, name, sourcedir='', sources=[], **kw):
         # don't invoke the original build_ext for this special extension
-        super().__init__(name, sources=[])
+        super().__init__(name, sources=sources, **kw)
         self.sourcedir = os.path.abspath(sourcedir)
 
 
@@ -83,8 +83,7 @@ setup(
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8"
     ],
-    packages=["assimp_py"],
-    ext_modules=[CMakeExtension("assimp_py.assimp_py")],
+    ext_modules=[CMakeExtension("assimp_py")],
     cmdclass={
         'build_ext': CMakeBuild,
     }
