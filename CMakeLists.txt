@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 
 project(assimp_py)
+# find_package(PythonInterp REQUIRED)
 find_package(PythonLibs REQUIRED)
 
 set(CMAKE_C_STANDARD 99)
@@ -8,6 +9,15 @@ find_program(CCACHE_FOUND ccache)
 if(CCACHE_FOUND)
     set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
 endif(CCACHE_FOUND)
+
+# needed for python lib
+if(CMAKE_COMPILER_IS_GNUCC)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -funsigned-char")
+endif()
+
+if(MSVC)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /J")
+endif()
 
 
 # -- load assimp (static with no export fuctionality)
@@ -34,12 +44,11 @@ endif()
 
 
 set_target_properties(assimp_py PROPERTIES PREFIX ""
+                                           LINKER_LANGUAGE C
                                            SUFFIX "${PYTHON_MOD_SUFFIX}")
 
 # -- link assimp
 target_link_libraries(assimp_py assimp)
-
-# On Windows, it is required to link to the Python libraries
-if(WIN32)
+if(WIN32 OR APPLE)
     target_link_libraries(assimp_py ${PYTHON_LIBRARIES})
 endif()
