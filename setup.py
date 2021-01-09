@@ -8,6 +8,7 @@ import subprocess
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
 from distutils.version import LooseVersion
+from distutils.sysconfig import get_python_inc, get_config_var
 
 
 class CMakeExtension(Extension):
@@ -58,6 +59,10 @@ class CMakeBuild(build_ext):
                                                               self.distribution.get_version())
         if not os.path.exists(self.build_temp):
             os.makedirs(self.build_temp)
+
+        cmake_args += ['-DPYTHON_INCLUDE_DIR={}'.format(get_python_inc()),
+                       '-DPYTHON_LIBRARY={}'.format(get_config_var('LIBDIR'))]
+
         subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=self.build_temp, env=env)
         subprocess.check_call(['cmake', '--build', '.'] + build_args, cwd=self.build_temp)
 
