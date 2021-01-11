@@ -63,6 +63,10 @@ class CMakeBuild(build_ext):
         cmake_args += ['-DPYTHON_INCLUDE_DIR={}'.format(get_python_inc()),
                        '-DPYTHON_LIBRARY={}'.format(get_config_var('LIBDIR'))]
 
+        cmake_args += ['-DBUILD_SHARED_LIBS=OFF',
+                       '-DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=FALSE',
+                       '-DASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT=FALSE'
+                    ]
         subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=self.build_temp, env=env)
         subprocess.check_call(['cmake', '--build', '.'] + build_args, cwd=self.build_temp)
 

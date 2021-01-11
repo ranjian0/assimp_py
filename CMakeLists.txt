@@ -20,10 +20,6 @@ if(MSVC)
 endif()
 
 
-# -- load assimp (static with no export fuctionality)
-set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT FALSE)
-set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT FALSE)
-set(BUILD_SHARED_LIBS OFF)
 add_subdirectory(assimp)
 
 
