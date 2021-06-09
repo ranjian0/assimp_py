@@ -54,9 +54,9 @@ class CMakeBuild(build_ext):
             '-DBUILD_SHARED_LIBS=OFF',
 
             # XXX Uncomment the following lines to get lighter OBJ only build for development
-            # '-DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=FALSE',
-            # '-DASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT=FALSE',
-            # '-DASSIMP_BUILD_OBJ_IMPORTER=TRUE'
+            '-DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=FALSE',
+            '-DASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT=FALSE',
+            '-DASSIMP_BUILD_OBJ_IMPORTER=TRUE'
         ]
 
         build_args = [
