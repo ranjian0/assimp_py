@@ -58,7 +58,7 @@ class CMakeBuild(build_ext):
         ]
 
         build_args = [
-            '--config', cfg, '--', '-j4'
+            '--config', cfg,  # '--', '-j4'
         ]
 
         os.chdir(str(build_temp))
