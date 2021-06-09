@@ -46,3 +46,6 @@ set_target_properties(assimp_py PROPERTIES PREFIX ""
 
 # -- link assimp
 target_link_libraries(assimp_py assimp)
+if(APPLE)
+    target_link_libraries(assimp_py ${Python_LIBRARIES})
+endif()
