@@ -25,7 +25,7 @@ add_subdirectory(assimp)
 # -- build the python extension
 include_directories(assimp/include ${Python_INCLUDE_DIRS})
 link_directories(${Python_LIBRARY_DIRS})
-add_library(assimp_py SHARED assimp_py/assimp_py.c)
+add_library(assimp_py SHARED assimp_py.c)
 
 
 # -- set the suffix of the build extension module

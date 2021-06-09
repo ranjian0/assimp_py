@@ -52,13 +52,15 @@ class CMakeBuild(build_ext):
             '-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + str(extdir.parent.absolute()),
 
             '-DBUILD_SHARED_LIBS=OFF',
+
+            # XXX Uncomment the following lines to get lighter OBJ only build for development
             # '-DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=FALSE',
             # '-DASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT=FALSE',
             # '-DASSIMP_BUILD_OBJ_IMPORTER=TRUE'
         ]
 
         build_args = [
-            '--config', cfg,  # '--', '-j4'
+            '--config', cfg
         ]
 
         os.chdir(str(build_temp))
@@ -77,7 +79,6 @@ setup(
     name="assimp_py",
     version="1.0.2",
     long_description=README,
-    packages=['assimp_py'],
     long_description_content_type="text/markdown",
     description="Minimal Python Bindings for ASSIMP Library using C-API",
     author="Ian Ichung'wah",
@@ -90,7 +91,7 @@ setup(
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9"
     ],
-    ext_modules=[CMakeExtension("assimp_py.assimp_py")],
+    ext_modules=[CMakeExtension("assimp_py")],
     cmdclass={
         'build_ext': CMakeBuild,
     }

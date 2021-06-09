@@ -1,1 +1,0 @@
-from .assimp_py import *
