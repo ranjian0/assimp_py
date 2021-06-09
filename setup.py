@@ -38,30 +38,11 @@ class CMakeBuild(build_ext):
         super().run()
 
     def build_extension(self, ext):
-        # extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
-        # cmake_args = ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir,
-        #               '-DPYTHON_EXECUTABLE=' + sys.executable]
-
-        cfg = 'Debug' if self.debug else 'Release'
-        # build_args = ['--config', cfg]
-
-        # if platform.system() == "Windows":
-        #     cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{}={}'.format(cfg.upper(), extdir)]
-        #     if sys.maxsize > 2**32:
-        #         cmake_args += ['-A', 'x64']
-        #     build_args += ['--', '/m']
-        # else:
-        #     cmake_args += ['-DCMAKE_BUILD_TYPE=' + cfg]
-        #     build_args += ['--', '-j3']
-
         env = os.environ.copy()
-        # env['CXXFLAGS'] = '{} -DVERSION_INFO=\\"{}\\"'.format(env.get('CXXFLAGS', ''),
-        #                                                       self.distribution.get_version())
+        cfg = 'Debug' if self.debug else 'Release'
+
         if not os.path.exists(self.build_temp):
             os.makedirs(self.build_temp)
-
-        # cmake_args += ['-DPYTHON_INCLUDE_DIR={}'.format(get_python_inc()),
-        #                '-DPYTHON_LIBRARY={}'.format(get_config_var('LIBDIR'))]
 
         cmake_args = ['-DBUILD_SHARED_LIBS=OFF',
                        '-DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=FALSE',
