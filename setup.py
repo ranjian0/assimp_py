@@ -1,6 +1,5 @@
 import os
 import re
-import sys
 import pathlib
 import platform
 import subprocess
@@ -8,15 +7,12 @@ import subprocess
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
 from distutils.version import LooseVersion
-from distutils.sysconfig import get_python_inc, get_config_var
-
 
 class CMakeExtension(Extension):
 
-    def __init__(self, name, sourcedir='', sources=[], **kw):
+    def __init__(self, name):
         # don't invoke the original build_ext for this special extension
-        super().__init__(name, sources=sources, **kw)
-        self.sourcedir = os.path.abspath(sourcedir)
+        super().__init__(name, sources=[])
 
 
 class CMakeBuild(build_ext):
@@ -39,17 +35,37 @@ class CMakeBuild(build_ext):
 
     def build_extension(self, ext):
         env = os.environ.copy()
+        cwd = pathlib.Path().absolute()
         cfg = 'Debug' if self.debug else 'Release'
 
-        if not os.path.exists(self.build_temp):
-            os.makedirs(self.build_temp)
+        # these dirs will be created in build_py, so if you don't have
+        # any python sources to bundle, the dirs will be missing
+        build_temp = pathlib.Path(self.build_temp)
+        build_temp.mkdir(parents=True, exist_ok=True)
 
-        cmake_args = ['-DBUILD_SHARED_LIBS=OFF',
-                       '-DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=FALSE',
-                       '-DASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT=FALSE'
-                    ]
-        subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=self.build_temp, env=env)
-        subprocess.check_call(['cmake', '--build', '.'], cwd=self.build_temp)
+        extdir = pathlib.Path(self.get_ext_fullpath(ext.name))
+        extdir.parent.mkdir(parents=True, exist_ok=True)
+
+        # exit()
+        cmake_args = [
+            '-DCMAKE_BUILD_TYPE=' + cfg,
+            '-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + str(extdir.parent.absolute()),
+
+            '-DBUILD_SHARED_LIBS=OFF',
+            # '-DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=FALSE',
+            # '-DASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT=FALSE',
+            # '-DASSIMP_BUILD_OBJ_IMPORTER=TRUE'
+        ]
+
+        build_args = [
+            '--config', cfg, '--', '-j4'
+        ]
+
+        os.chdir(str(build_temp))
+        self.spawn(['cmake', str(cwd)] + cmake_args)
+        if not self.dry_run:
+            self.spawn(['cmake', '--build', '.'] + build_args)
+        os.chdir(str(cwd))
 
 
 # The directory containing this file
@@ -61,6 +77,7 @@ setup(
     name="assimp_py",
     version="1.0.2",
     long_description=README,
+    packages=['assimp_py'],
     long_description_content_type="text/markdown",
     description="Minimal Python Bindings for ASSIMP Library using C-API",
     author="Ian Ichung'wah",
@@ -73,7 +90,7 @@ setup(
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9"
     ],
-    ext_modules=[CMakeExtension("assimp_py")],
+    ext_modules=[CMakeExtension("assimp_py.assimp_py")],
     cmdclass={
         'build_ext': CMakeBuild,
     }

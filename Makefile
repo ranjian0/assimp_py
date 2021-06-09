@@ -1,5 +1,8 @@
 all:
-	@python setup.py build 
+	@python setup.py build
+	
+develop:
+	@python setup.py develop
 
 .PHONY: clean
 

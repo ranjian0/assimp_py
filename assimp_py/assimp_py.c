@@ -1,4 +1,5 @@
 #define PY_SSIZE_T_CLEAN
+#include <stdio.h>
 #include <string.h>
 #include <Python.h>
 #include <structmember.h>
@@ -420,7 +421,9 @@ static PyObject* ImportFile(PyObject *self, PyObject *args) {
     // Load the scene
     const struct aiScene *scene = aiImportFile(filename, flags);
     if (!scene || !scene->mRootNode) {
-        PyErr_SetString(PyExc_ValueError, "Could not Import the file!");
+        char err[1024];
+        sprintf(err, "Assimp error: %s", aiGetErrorString());
+        PyErr_SetString(PyExc_ValueError, err);
         return (PyObject*)NULL;
     }
 
