@@ -11,10 +11,16 @@ if(CCACHE_FOUND)
 endif(CCACHE_FOUND)
 
 # needed for python lib
+if(CMAKE_COMPILER_IS_GNUCC)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -funsigned-char")
+endif()
+
 if(MSVC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /J")
-else()
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -funsigned-char")
+endif()
+
+if(APPLE)
+    set(CMAKE_C_LDFLAGS "-bundle -undefined dynamic_lookup")
 endif()
 
 
