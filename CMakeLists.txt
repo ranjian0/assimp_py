@@ -19,11 +19,6 @@ if(MSVC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /J")
 endif()
 
-if(APPLE)
-    set(CMAKE_SHARED_LINKER_FLAGS "-undefined dynamic_lookup")
-endif()
-
-
 add_subdirectory(assimp)
 
 # -- build the python extension
