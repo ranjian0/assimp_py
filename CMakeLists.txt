@@ -20,7 +20,7 @@ if(MSVC)
 endif()
 
 if(APPLE)
-    set(CMAKE_C_FLAGS "-bundle -undefined dynamic_lookup")
+    set(CMAKE_SHARED_LINKER_FLAGS "-bundle -undefined dynamic_lookup")
 endif()
 
 
