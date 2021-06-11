@@ -25,6 +25,9 @@ add_subdirectory(assimp)
 include_directories(assimp/include ${Python_INCLUDE_DIRS})
 link_directories(${Python_LIBRARY_DIRS})
 add_library(assimp_py SHARED assimp_py.c)
+if(APPLE)
+        target_link_libraries(assimp_py "-undefined dynamic_lookup")
+endif()
 
 
 # -- set the suffix of the build extension module
@@ -45,6 +48,3 @@ set_target_properties(assimp_py PROPERTIES PREFIX ""
 
 # -- link assimp
 target_link_libraries(assimp_py assimp)
-if(APPLE)
-    target_link_libraries(assimp_py ${Python_LIBRARIES})
-endif()
