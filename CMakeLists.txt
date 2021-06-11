@@ -16,7 +16,7 @@ if(CMAKE_COMPILER_IS_GNUCC)
 endif()
 
 if(MSVC)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /J /w")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /J")
 endif()
 
 add_subdirectory(assimp)
