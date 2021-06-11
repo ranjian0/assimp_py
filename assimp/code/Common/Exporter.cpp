@@ -76,8 +76,8 @@ namespace Assimp {
 
 #ifdef _MSC_VER
 #    pragma warning( disable : 4800 )
+#    pragma warning( disable : 4100 )
 #endif // _MSC_VER
-
 
 // PostStepRegistry.cpp
 void GetPostProcessingStepInstanceList(std::vector< BaseProcess* >& out);
