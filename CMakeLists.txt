@@ -25,26 +25,19 @@ add_subdirectory(assimp)
 include_directories(assimp/include ${Python_INCLUDE_DIRS})
 link_directories(${Python_LIBRARY_DIRS})
 add_library(assimp_py SHARED assimp_py.c)
+
+target_link_libraries(assimp_py assimp)
 if(APPLE)
-        target_link_libraries(assimp_py "-undefined dynamic_lookup")
+    target_link_libraries(assimp_py "-undefined dynamic_lookup")
 endif()
 
 
 # -- set the suffix of the build extension module
-if(NOT DEFINED PYTHON_MOD_SUFFIX)
-    execute_process(
-        COMMAND python3-config --extension-suffix
-        OUTPUT_VARIABLE _py_soabi
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-    set(PYTHON_MOD_SUFFIX "${_py_soabi}" CACHE PATH INTERNAL)
-    unset(_py_soabi)
-endif()
-
-
-set_target_properties(assimp_py PROPERTIES PREFIX ""
-                                           LINKER_LANGUAGE C
-                                           SUFFIX "${PYTHON_MOD_SUFFIX}")
-
-# -- link assimp
-target_link_libraries(assimp_py assimp)
+# EXTENSION_NAME is defined in setup.py
+set_target_properties(
+    assimp_py
+    PROPERTIES
+        PREFIX ""
+        SUFFIX ""
+        OUTPUT_NAME "${EXTENSION_NAME}"
+)

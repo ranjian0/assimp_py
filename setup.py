@@ -34,8 +34,6 @@ class CMakeBuild(build_ext):
         super().run()
 
     def build_extension(self, ext):
-        env = os.environ.copy()
-        cwd = pathlib.Path().absolute()
         cfg = 'Debug' if self.debug else 'Release'
 
         # these dirs will be created in build_py, so if you don't have
@@ -46,11 +44,15 @@ class CMakeBuild(build_ext):
         extdir = pathlib.Path(self.get_ext_fullpath(ext.name))
         extdir.parent.mkdir(parents=True, exist_ok=True)
 
-        # exit()
         cmake_args = [
             '-DCMAKE_BUILD_TYPE=' + cfg,
             '-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + str(extdir.parent.absolute()),
 
+            # This is the only reliable way I could find to get extension name on all platforms
+            # Used within CMakeLists.txt
+            '-DEXTENSION_NAME='+ str(extdir.name),
+
+            # Assimp Flags
             '-DBUILD_SHARED_LIBS=OFF',
 
             # XXX Uncomment the following lines to get lighter OBJ only build for development
@@ -59,15 +61,20 @@ class CMakeBuild(build_ext):
             '-DASSIMP_BUILD_OBJ_IMPORTER=TRUE'
         ]
 
-        build_args = [
-            '--config', cfg
-        ]
 
-        os.chdir(str(build_temp))
-        self.spawn(['cmake', str(cwd)] + cmake_args)
+        # We can handle some platform-specific settings at our discretion
+        if platform.system() == 'Windows':
+            plat = ('x64' if platform.architecture()[0] == '64bit' else 'Win32')
+            cmake_args += [
+                # These options are likely to be needed under Windows
+                '-DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=TRUE',
+                '-DCMAKE_RUNTIME_OUTPUT_DIRECTORY_{}={}'.format(cfg.upper(), str(extdir.parent.absolute())),
+            ]
+
+        build_args = ['--config', cfg]
+        self.spawn(['cmake', '-S', '.', '-B', str(build_temp)] + cmake_args)
         if not self.dry_run:
-            self.spawn(['cmake', '--build', '.'] + build_args)
-        os.chdir(str(cwd))
+            self.spawn(['cmake', '--build', str(build_temp)] + build_args)
 
 
 # The directory containing this file
