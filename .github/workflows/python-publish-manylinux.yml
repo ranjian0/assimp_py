@@ -17,7 +17,7 @@ jobs:
     - name: Install build dependencies on ubuntu
       run: |
         sudo apt-get update
-        sudo apt-get install cmake python3-devel
+        sudo apt-get install cmake python3-dev
         cmake --version
 
     - name: Install dependencies
