@@ -1,8 +1,8 @@
 name: PyPI ManyLinux
 
-on: workflow_dispatch
-  # release:
-  #   types: [created]
+on:
+  release:
+    types: [created]
 
 jobs:
   deploy:
