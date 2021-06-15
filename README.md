@@ -22,6 +22,13 @@ python setup.py install
 
 > **cmake>=3.18 is required for building from source**
 
+## [Optional] Run tests to make sure everything works fine
+```
+pip install pytest
+pytest tests
+```
+
+
 # Example Program
 
 ```python
