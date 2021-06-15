@@ -39,3 +39,6 @@ for m in scene.meshes:
     # -- getting textures
     diffuse_tex = mat["TEXTURES"][assimp_py.TextureType_DIFFUSE]
 ```
+# Supported Importer Formats
+
+> AMF 3DS AC ASE ASSBIN B3D BVH COLLADA DXF CSM HMP IRRMESH IRR LWO LWS M3D MD2 MD3 MD5 MDC MDL NFF NDO OFF OGRE OPENGEX PLY MS3D COB BLEND IFC XGL FBX Q3D Q3BSP RAW SIB SMD STL TERRAGEN 3D X X3D GLTF 3MF MMD OBJ
