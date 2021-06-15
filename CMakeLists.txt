@@ -2,7 +2,12 @@ cmake_minimum_required(VERSION 3.0)
 
 project(assimp_py)
 set(CMAKE_C_STANDARD 99)
-find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development)
+if(LINUX)
+    # https://pybind11.readthedocs.io/en/stable/compiling.html#findpython-mode
+    find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development.Module)
+else()
+    find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development)
+endif()
 
 
 # use ccache to speed up builds if it is available
