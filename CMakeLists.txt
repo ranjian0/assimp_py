@@ -32,7 +32,7 @@ if(APPLE)
 endif()
 
 
-# -- set the suffix of the build extension module
+# -- set the name of the build extension module
 # EXTENSION_NAME is defined in setup.py
 set_target_properties(
     assimp_py

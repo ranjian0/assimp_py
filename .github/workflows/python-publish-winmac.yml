@@ -3,9 +3,9 @@
 
 name: PyPI WinMac
 
-on:
-  release:
-    types: [created]
+on: workflow_dispatch
+  # release:
+  #   types: [created]
 
 jobs:
   deploy:
@@ -21,15 +21,29 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: ${{ matrix.python-version }} 
+
+    - name: Install build dependencies on windows
+      if: startsWith(matrix.os, 'windows')
+      run: |
+        choco install cmake
+        cmake --version
+
+    - name: Install build dependencies on macos
+      if: startsWith(matrix.os, 'macos')
+      run: |
+        brew install cmake
+        cmake --version
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install setuptools wheel twine
-    - name: Build and publish
-      env:
-        TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
-        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-      run: |
-        python setup.py sdist bdist_wheel
-        twine upload --skip-existing dist/*
+
+    # - name: Build and publish
+    #   env:
+    #     TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+    #     TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+    #   run: |
+    #     python setup.py sdist bdist_wheel
+    #     twine upload --skip-existing dist/*
