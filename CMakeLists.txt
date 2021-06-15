@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.0)
 
 project(assimp_py)
 set(CMAKE_C_STANDARD 99)
-if(LINUX)
+if(UNIX AND NOT APPLE)
     # https://pybind11.readthedocs.io/en/stable/compiling.html#findpython-mode
-    find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development.Module)
+    find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
 else()
     find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development)
 endif()
