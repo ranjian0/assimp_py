@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 import pathlib
 import platform
@@ -7,6 +8,8 @@ import subprocess
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
 from distutils.version import LooseVersion
+
+PYTHON_VERSION = f"{sys.version_info.major}.{sys.version_info.minor}"
 
 class CMakeExtension(Extension):
 
@@ -47,6 +50,9 @@ class CMakeBuild(build_ext):
         cmake_args = [
             '-DCMAKE_BUILD_TYPE=' + cfg,
             '-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + str(extdir.parent.absolute()),
+
+            # Tells cmake which python version to use for this build
+            '-DREQUESTED_PYTHON_VERSION=' + PYTHON_VERSION,
 
             # This is the only reliable way I could find to get extension name on all platforms
             # Used within CMakeLists.txt
