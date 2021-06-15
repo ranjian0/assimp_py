@@ -2,13 +2,8 @@ cmake_minimum_required(VERSION 3.0)
 
 project(assimp_py)
 set(CMAKE_C_STANDARD 99)
-if(LINUX)
-    # Get suitable version on linux (gotcha for manylinux wheel builds)
-    find_package(Python REQUIRED COMPONENTS Interpreter Development)
-else()
-    # Get exact python version on windows/mac
-    find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development)
-endif()
+find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development)
+
 
 # use ccache to speed up builds if it is available
 find_program(CCACHE_FOUND ccache)
