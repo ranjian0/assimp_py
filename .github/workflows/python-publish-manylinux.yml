@@ -14,10 +14,16 @@ jobs:
       with:
         python-version: 3.9
 
+    - name: Install build dependencies on ubuntu
+      run: |
+        sudo apt-get update
+        sudo apt-get install cmake python3-devel
+        cmake --version
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install twine cmake
+        pip install twine
 
     - name: Build manylinux Python wheels
       uses: RalfG/python-wheels-manylinux-build@v0.3.1-manylinux2010_x86_64
