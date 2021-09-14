@@ -16,12 +16,11 @@
 typedef struct {
     PyObject_HEAD
     const char* name;
-    uint num_faces;
     uint num_vertices;
     uint material_index;
     PyObject* num_uv_components;
 
-    PyObject *faces;
+    PyObject *indices;
     PyObject *colors;
     PyObject *normals;
     PyObject *vertices;
@@ -35,8 +34,7 @@ static PyMemberDef Mesh_members[] = {
     {"material_index", T_UINT, offsetof(Mesh, material_index), READONLY, NULL},
     {"num_uv_components", T_OBJECT, offsetof(Mesh, num_uv_components), READONLY, NULL},
 
-    {"faces", T_OBJECT, offsetof(Mesh, faces), READONLY, NULL},
-    {"num_faces", T_UINT, offsetof(Mesh, num_faces), READONLY, NULL},
+    {"indices", T_OBJECT, offsetof(Mesh, indices), READONLY, NULL},
 
     {"vertices", T_OBJECT, offsetof(Mesh, vertices), READONLY, NULL},
     {"num_vertices", T_UINT, offsetof(Mesh, num_vertices), READONLY, NULL},
@@ -51,10 +49,10 @@ static PyMemberDef Mesh_members[] = {
 
 static int Mesh_init(Mesh *self, PyObject *args, PyObject *kwds) {
     self->name = "";
-    self->num_faces = 0;
     self->num_vertices = 0;
     self->material_index = 0;
 
+    self->indices = Py_None;
     self->vertices = Py_None;
     self->normals = Py_None;
     self->tangents = Py_None;
@@ -349,7 +347,6 @@ static void process_meshes(Scene *py_scene, const struct aiScene *c_scene) {
         Py_INCREF(pymesh);
 
         pymesh->name = m->mName.data;
-        pymesh->num_faces = m->mNumFaces;
         pymesh->num_vertices = m->mNumVertices;
         pymesh->material_index = m->mMaterialIndex;
 
@@ -378,9 +375,12 @@ static void process_meshes(Scene *py_scene, const struct aiScene *c_scene) {
             }
         }
 
-        pymesh->faces = PyList_New(m->mNumFaces);
+        pymesh->indices = PyList_New(0);
         for(uint j=0; j < m->mNumFaces; j++) {
-            PyList_SetItem(pymesh->faces, j, tuple_from_face(&m->mFaces[j]));
+            struct aiFace face = m->mFaces[j];
+            for(unsigned int k=0; k<face.mNumIndices; k++) {
+                PyList_Append(pymesh->indices, PyLong_FromUnsignedLong(face.mIndices[k]));
+            }
         }
 
         PyList_SetItem(py_scene->meshes, i, (PyObject*)pymesh);
