@@ -375,13 +375,10 @@ static void process_meshes(Scene *py_scene, const struct aiScene *c_scene) {
             }
         }
 
-        pymesh->indices = PyList_New(0);
+        pymesh->indices = PyList_New(m->mNumFaces);
         for(uint j=0; j < m->mNumFaces; j++) {
-            struct aiFace face = m->mFaces[j];
-            for(unsigned int k=0; k<face.mNumIndices; k++) {
-                PyList_Append(pymesh->indices, PyLong_FromUnsignedLong(face.mIndices[k]));
-            }
-        }
+            PyList_SetItem(pymesh->indices, j, tuple_from_face(&m->mFaces[j]));
+        }        
 
         PyList_SetItem(py_scene->meshes, i, (PyObject*)pymesh);
     }
