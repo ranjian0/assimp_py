@@ -89,7 +89,7 @@ README = (HERE/"README.md").read_text()
 
 setup(
     name="assimp_py",
-    version="1.0.5",
+    version="1.0.6",
     long_description=README,
     long_description_content_type="text/markdown",
     description="Minimal Python Bindings for ASSIMP Library using C-API",
@@ -101,7 +101,8 @@ setup(
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9"
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10"
     ],
     ext_modules=[CMakeExtension("assimp_py")],
     cmdclass={
