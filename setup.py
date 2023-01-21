@@ -59,6 +59,8 @@ class CMakeBuild(build_ext):
 
             # Assimp Flags
             '-DBUILD_SHARED_LIBS=OFF',
+            '-DASSIMP_BUILD_ASSIMP_TOOLS=FALSE',
+            '-DASSIMP_BUILD_TESTS=FALSE'
 
             # XXX Uncomment the following lines to get lighter OBJ only build for development
             # '-DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=FALSE',
