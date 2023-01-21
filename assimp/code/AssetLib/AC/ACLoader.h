@@ -2,8 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
-
+Copyright (c) 2006-2022, assimp team
 
 All rights reserved.
 
@@ -64,7 +63,7 @@ namespace Assimp {
 class AC3DImporter : public BaseImporter {
 public:
     AC3DImporter();
-    ~AC3DImporter();
+    ~AC3DImporter() override;
 
     // Represents an AC3D material
     struct Material {
@@ -117,16 +116,16 @@ public:
             Mask = 0xf,
         };
 
-        inline constexpr uint8_t GetType() const { return (flags & Mask); }
+        inline uint8_t GetType() const { return (flags & Mask); }
     };
 
     // Represents an AC3D object
     struct Object {
         Object() :
                 type(World),
-                name(""),
+                name(),
                 children(),
-                texture(""),
+                texture(),
                 texRepeat(1.f, 1.f),
                 texOffset(0.0f, 0.0f),
                 rotation(),
@@ -186,25 +185,25 @@ public:
      * See BaseImporter::CanRead() for details.
      */
     bool CanRead(const std::string &pFile, IOSystem *pIOHandler,
-            bool checkSig) const;
+            bool checkSig) const override;
 
 protected:
     // -------------------------------------------------------------------
     /** Return importer meta information.
      * See #BaseImporter::GetInfo for the details */
-    const aiImporterDesc *GetInfo() const;
+    const aiImporterDesc *GetInfo() const override;
 
     // -------------------------------------------------------------------
     /** Imports the given file into the given scene structure.
      * See BaseImporter::InternReadFile() for details*/
     void InternReadFile(const std::string &pFile, aiScene *pScene,
-            IOSystem *pIOHandler);
+            IOSystem *pIOHandler) override;
 
     // -------------------------------------------------------------------
     /** Called prior to ReadFile().
     * The function is a request to the importer to update its configuration
     * basing on the Importer's configuration property list.*/
-    void SetupProperties(const Importer *pImp);
+    void SetupProperties(const Importer *pImp) override;
 
 private:
     // -------------------------------------------------------------------

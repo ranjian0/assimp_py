@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 
 All rights reserved.
@@ -59,6 +59,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ASSIMP_BUILD_BLENDER_DEBUG
 #endif
 
+// set this to non-zero to dump BlenderDNA stuff to dna.txt.
+// you could set it on the assimp build command line too without touching it here.
+// !!! please make sure this is set to 0 in the repo !!!
+#ifndef ASSIMP_BUILD_BLENDER_DEBUG_DNA
+#define ASSIMP_BUILD_BLENDER_DEBUG_DNA 0
+#endif
+
 // #define ASSIMP_BUILD_BLENDER_NO_STATS
 
 namespace Assimp {
@@ -83,9 +90,9 @@ class ObjectCache;
  *  ancestry. */
 // -------------------------------------------------------------------------------
 struct Error : DeadlyImportError {
-    Error(const std::string &s) :
-            DeadlyImportError(s) {
-        // empty
+    template <typename... T>
+    explicit Error(T &&...args) :
+            DeadlyImportError(args...) {
     }
 };
 
@@ -186,7 +193,7 @@ struct Field {
 };
 
 // -------------------------------------------------------------------------------
-/** Range of possible behaviours for fields absend in the input file. Some are
+/** Range of possible behaviors for fields absence in the input file. Some are
  *  mission critical so we need them, while others can silently be default
  *  initialized and no animations are harmed. */
 // -------------------------------------------------------------------------------
@@ -394,7 +401,7 @@ private:
 
 // --------------------------------------------------------
 template <>
-struct Structure ::_defaultInitializer<ErrorPolicy_Warn> {
+struct Structure::_defaultInitializer<ErrorPolicy_Warn> {
 
     template <typename T>
     void operator()(T &out, const char *reason = "<add reason>") {
@@ -406,13 +413,13 @@ struct Structure ::_defaultInitializer<ErrorPolicy_Warn> {
 };
 
 template <>
-struct Structure ::_defaultInitializer<ErrorPolicy_Fail> {
+struct Structure::_defaultInitializer<ErrorPolicy_Fail> {
 
     template <typename T>
-    void operator()(T & /*out*/, const char * = "") {
+    void operator()(T & /*out*/, const char *message = "") {
         // obviously, it is crucial that _DefaultInitializer is used
         // only from within a catch clause.
-        throw DeadlyImportError("Constructing BlenderDNA Structure encountered an error");
+        throw DeadlyImportError("Constructing BlenderDNA Structure encountered an error: ", message);
     }
 };
 
@@ -423,6 +430,17 @@ inline bool Structure ::ResolvePointer<std::shared_ptr, ElemBase>(std::shared_pt
         const FileDatabase &db,
         const Field &f,
         bool) const;
+
+template <> bool Structure :: ResolvePointer<std::shared_ptr,ElemBase>(
+    std::shared_ptr<ElemBase>& out, const Pointer & ptrval,
+    const FileDatabase& db, const Field&, bool) const;
+template <> inline void Structure :: Convert<int>    (int& dest,const FileDatabase& db) const;
+template<> inline void Structure :: Convert<short>  (short& dest,const FileDatabase& db) const;
+template <> inline void Structure :: Convert<char>   (char& dest,const FileDatabase& db) const;
+template <> inline void Structure::Convert<unsigned char>(unsigned char& dest, const FileDatabase& db) const;
+template <> inline void Structure :: Convert<float>  (float& dest,const FileDatabase& db) const;
+template <> inline void Structure :: Convert<double> (double& dest,const FileDatabase& db) const;
+template <> inline void Structure :: Convert<Pointer> (Pointer& dest,const FileDatabase& db) const;
 
 // -------------------------------------------------------------------------------
 /** Represents the full data structure information for a single BLEND file.
@@ -469,7 +487,7 @@ public:
      *  in BlenderScene.cpp and is machine-generated.
      *  Converters are used to quickly handle objects whose
      *  exact data type is a runtime-property and not yet
-     *  known at compile time (consier Object::data).*/
+     *  known at compile time (consider Object::data).*/
     void RegisterConverters();
 
     // --------------------------------------------------------
@@ -495,7 +513,7 @@ public:
             const Structure &structure,
             const FileDatabase &db) const;
 
-#ifdef ASSIMP_BUILD_BLENDER_DEBUG
+#if ASSIMP_BUILD_BLENDER_DEBUG_DNA
     // --------------------------------------------------------
     /** Dump the DNA to a text file. This is for debugging purposes.
      *  The output file is `dna.txt` in the current working folder*/

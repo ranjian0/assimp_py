@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 
 
@@ -218,7 +218,7 @@ void LWOImporter::CopyFaceIndicesLWOB(FaceList::iterator& it,
 // ------------------------------------------------------------------------------------------------
 LWO::Texture* LWOImporter::SetupNewTextureLWOB(LWO::TextureList& list,unsigned int size)
 {
-    list.push_back(LWO::Texture());
+    list.emplace_back();
     LWO::Texture* tex = &list.back();
 
     std::string type;
@@ -242,7 +242,7 @@ LWO::Texture* LWOImporter::SetupNewTextureLWOB(LWO::TextureList& list,unsigned i
     else
     {
         // procedural or gradient, not supported
-        ASSIMP_LOG_ERROR_F("LWOB: Unsupported legacy texture: ", type);
+        ASSIMP_LOG_ERROR("LWOB: Unsupported legacy texture: ", type);
     }
 
     return tex;

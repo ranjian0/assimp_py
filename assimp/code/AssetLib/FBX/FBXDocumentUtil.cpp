@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 
 All rights reserved.
@@ -59,27 +59,24 @@ namespace Util {
 
 // ------------------------------------------------------------------------------------------------
 // signal DOM construction error, this is always unrecoverable. Throws DeadlyImportError.
-void DOMError(const std::string& message, const Token& token)
-{
-    throw DeadlyImportError(Util::AddTokenText("FBX-DOM",message,&token));
+void DOMError(const std::string& message, const Token& token) {
+    throw DeadlyImportError("FBX-DOM", Util::GetTokenText(&token), message);
 }
 
 // ------------------------------------------------------------------------------------------------
-void DOMError(const std::string& message, const Element* element /*= nullptr*/)
-{
+void DOMError(const std::string& message, const Element* element /*= nullptr*/) {
     if(element) {
         DOMError(message,element->KeyToken());
     }
-    throw DeadlyImportError("FBX-DOM " + message);
+    throw DeadlyImportError("FBX-DOM ", message);
 }
 
 
 // ------------------------------------------------------------------------------------------------
 // print warning, do return
-void DOMWarning(const std::string& message, const Token& token)
-{
+void DOMWarning(const std::string& message, const Token& token) {
     if(DefaultLogger::get()) {
-        ASSIMP_LOG_WARN(Util::AddTokenText("FBX-DOM",message,&token));
+        ASSIMP_LOG_WARN("FBX-DOM", Util::GetTokenText(&token), message);
     }
 }
 
@@ -91,7 +88,7 @@ void DOMWarning(const std::string& message, const Element* element /*= nullptr*/
         return;
     }
     if(DefaultLogger::get()) {
-        ASSIMP_LOG_WARN("FBX-DOM: " + message);
+        ASSIMP_LOG_WARN("FBX-DOM: ", message);
     }
 }
 

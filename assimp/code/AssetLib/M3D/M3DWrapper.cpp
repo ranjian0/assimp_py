@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 Copyright (c) 2019 bzt
 
 All rights reserved.
@@ -39,8 +39,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ----------------------------------------------------------------------
 */
-
-#if !(ASSIMP_BUILD_NO_EXPORT || ASSIMP_BUILD_NO_M3D_EXPORTER) || !ASSIMP_BUILD_NO_M3D_IMPORTER
+#if !defined ASSIMP_BUILD_NO_M3D_IMPORTER || !(defined ASSIMP_BUILD_NO_EXPORT || defined ASSIMP_BUILD_NO_M3D_EXPORTER)
 
 #include "M3DWrapper.h"
 
@@ -133,13 +132,17 @@ unsigned char *M3DWrapper::Save(int quality, int flags, unsigned int &size) {
     saved_output_ = m3d_save(m3d_, quality, flags, &size);
     return saved_output_;
 #else
+    (void)quality;
+    (void)flags;
+    (void)size;
     return nullptr;
 #endif
 }
 
 void M3DWrapper::ClearSave() {
-    if (saved_output_)
+    if (saved_output_) {
         M3D_FREE(saved_output_);
+    }
     saved_output_ = nullptr;
 }
 } // namespace Assimp

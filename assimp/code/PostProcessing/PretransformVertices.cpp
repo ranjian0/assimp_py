@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 
 
@@ -70,9 +70,7 @@ PretransformVertices::PretransformVertices() :
 
 // ------------------------------------------------------------------------------------------------
 // Destructor, private as well
-PretransformVertices::~PretransformVertices() {
-	// nothing to do here
-}
+PretransformVertices::~PretransformVertices() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Returns whether the processing step is present in the given flag field.
@@ -429,7 +427,7 @@ void PretransformVertices::Execute(aiScene *pScene) {
 	const unsigned int iOldNodes = CountNodes(pScene->mRootNode);
 
 	if (configTransform) {
-		pScene->mRootNode->mTransformation = configTransformation;
+		pScene->mRootNode->mTransformation = configTransformation * pScene->mRootNode->mTransformation;
 	}
 
 	// first compute absolute transformation matrices for all nodes
@@ -481,7 +479,7 @@ void PretransformVertices::Execute(aiScene *pScene) {
 			pScene->mMeshes[i]->mNumBones = 0;
 		}
 	} else {
-		apcOutMeshes.reserve(pScene->mNumMaterials << 1u);
+		apcOutMeshes.reserve(static_cast<size_t>(pScene->mNumMaterials) << 1u);
 		std::list<unsigned int> aiVFormats;
 
 		std::vector<unsigned int> s(pScene->mNumMeshes, 0);
@@ -680,9 +678,9 @@ void PretransformVertices::Execute(aiScene *pScene) {
 	if (!DefaultLogger::isNullLogger()) {
 		ASSIMP_LOG_DEBUG("PretransformVerticesProcess finished");
 
-		ASSIMP_LOG_INFO_F("Removed ", iOldNodes, " nodes and ", iOldAnimationChannels, " animation channels (",
+		ASSIMP_LOG_INFO("Removed ", iOldNodes, " nodes and ", iOldAnimationChannels, " animation channels (",
 				CountNodes(pScene->mRootNode), " output nodes)");
-		ASSIMP_LOG_INFO_F("Kept ", pScene->mNumLights, " lights and ", pScene->mNumCameras, " cameras.");
-		ASSIMP_LOG_INFO_F("Moved ", iOldMeshes, " meshes to WCS (number of output meshes: ", pScene->mNumMeshes, ")");
+		ASSIMP_LOG_INFO("Kept ", pScene->mNumLights, " lights and ", pScene->mNumCameras, " cameras.");
+		ASSIMP_LOG_INFO("Moved ", iOldMeshes, " meshes to WCS (number of output meshes: ", pScene->mNumMeshes, ")");
 	}
 }

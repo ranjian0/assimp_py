@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 
 All rights reserved.
@@ -274,9 +274,7 @@ BlenderTessellatorP2T::BlenderTessellatorP2T( BlenderBMeshConverter& converter )
 }
 
 // ------------------------------------------------------------------------------------------------
-BlenderTessellatorP2T::~BlenderTessellatorP2T( )
-{
-}
+
 
 // ------------------------------------------------------------------------------------------------
 void BlenderTessellatorP2T::Tessellate( const MLoop* polyLoop, int vertexCount, const std::vector< MVert >& vertices )

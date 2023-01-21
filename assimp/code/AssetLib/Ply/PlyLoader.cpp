@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 All rights reserved.
 
@@ -94,30 +94,13 @@ PLYImporter::PLYImporter() :
 
 // ------------------------------------------------------------------------------------------------
 // Destructor, private as well
-PLYImporter::~PLYImporter() {
-    // empty
-}
+PLYImporter::~PLYImporter() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Returns whether the class can handle the format of the given file.
-bool PLYImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, bool checkSig) const {
-    const std::string extension = GetExtension(pFile);
-
-    if (extension == "ply") {
-        return true;
-    }
-
-    if (!extension.length() || checkSig) {
-        if (!pIOHandler) {
-            return true;
-        }
-        static const char *tokens[] = {
-            "ply"
-        };
-        return SearchFileHeaderForToken(pIOHandler, pFile, tokens, 1);
-    }
-
-    return false;
+bool PLYImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, bool /*checkSig*/) const {
+    static const char *tokens[] = { "ply" };
+    return SearchFileHeaderForToken(pIOHandler, pFile, tokens, AI_COUNT_OF(tokens));
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -150,14 +133,14 @@ static bool isBigEndian(const char *szMe) {
 void PLYImporter::InternReadFile(const std::string &pFile, aiScene *pScene, IOSystem *pIOHandler) {
     const std::string mode = "rb";
     std::unique_ptr<IOStream> fileStream(pIOHandler->Open(pFile, mode));
-    if (!fileStream.get()) {
-        throw DeadlyImportError("Failed to open file " + pFile + ".");
+    if (!fileStream) {
+        throw DeadlyImportError("Failed to open file ", pFile, ".");
     }
 
     // Get the file-size
     const size_t fileSize(fileStream->FileSize());
     if (0 == fileSize) {
-        throw DeadlyImportError("File " + pFile + " is empty.");
+        throw DeadlyImportError("File ", pFile, " is empty.");
     }
 
     IOStreamBuffer<char> streamedBuffer(1024 * 1024);
@@ -172,7 +155,7 @@ void PLYImporter::InternReadFile(const std::string &pFile, aiScene *pScene, IOSy
             (headerCheck[1] != 'L' && headerCheck[1] != 'l') ||
             (headerCheck[2] != 'Y' && headerCheck[2] != 'y')) {
         streamedBuffer.close();
-        throw DeadlyImportError("Invalid .ply file: Magic number \'ply\' is no there");
+        throw DeadlyImportError("Invalid .ply file: Incorrect magic number (expected 'ply' or 'PLY').");
     }
 
     std::vector<char> mBuffer2;

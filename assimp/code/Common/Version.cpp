@@ -3,8 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
-
+Copyright (c) 2006-2022, assimp team
 
 All rights reserved.
 
@@ -40,7 +39,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ---------------------------------------------------------------------------
 */
 
-// Actually just a dummy, used by the compiler to build the precompiled header.
+// Actually just a dummy, used by the compiler to build the pre-compiled header.
 
 #include "ScenePrivate.h"
 #include <assimp/scene.h>
@@ -51,13 +50,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // --------------------------------------------------------------------------------
 // Legal information string - don't remove this.
 static const char *LEGAL_INFORMATION =
-
         "Open Asset Import Library (Assimp).\n"
         "A free C/C++ library to import various 3D file formats into applications\n\n"
-
-        "(c) 2006-2020, assimp team\n"
+        "(c) 2006-2022, Assimp team\n"
         "License under the terms and conditions of the 3-clause BSD license\n"
-        "http://assimp.org\n";
+        "https://www.assimp.org\n";
 
 // ------------------------------------------------------------------------------------------------
 // Get legal string
@@ -138,6 +135,9 @@ ASSIMP_API aiScene::aiScene() :
         mNumCameras(0),
         mCameras(nullptr),
         mMetaData(nullptr),
+        mName(),
+        mNumSkeletons(0),
+        mSkeletons(nullptr),
         mPrivate(new Assimp::ScenePrivateData()) {
     // empty
 }
@@ -183,7 +183,8 @@ ASSIMP_API aiScene::~aiScene() {
     delete[] mCameras;
 
     aiMetadata::Dealloc(mMetaData);
-    mMetaData = nullptr;
 
+    delete[] mSkeletons;
+    
     delete static_cast<Assimp::ScenePrivateData *>(mPrivate);
 }

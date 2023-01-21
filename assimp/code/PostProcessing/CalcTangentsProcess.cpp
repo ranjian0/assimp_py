@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 
 
@@ -56,15 +56,13 @@ using namespace Assimp;
 // ------------------------------------------------------------------------------------------------
 // Constructor to be privately used by Importer
 CalcTangentsProcess::CalcTangentsProcess() :
-        configMaxAngle(AI_DEG_TO_RAD(45.f)), configSourceUV(0) {
+        configMaxAngle(float(AI_DEG_TO_RAD(45.f))), configSourceUV(0) {
     // nothing to do here
 }
 
 // ------------------------------------------------------------------------------------------------
 // Destructor, private as well
-CalcTangentsProcess::~CalcTangentsProcess() {
-    // nothing to do here
-}
+CalcTangentsProcess::~CalcTangentsProcess() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Returns whether the processing step is present in the given flag field.
@@ -129,7 +127,7 @@ bool CalcTangentsProcess::ProcessMesh(aiMesh *pMesh, unsigned int meshIndex) {
         return false;
     }
     if (configSourceUV >= AI_MAX_NUMBER_OF_TEXTURECOORDS || !pMesh->mTextureCoords[configSourceUV]) {
-        ASSIMP_LOG_ERROR((Formatter::format("Failed to compute tangents; need UV data in channel"), configSourceUV));
+        ASSIMP_LOG_ERROR("Failed to compute tangents; need UV data in channel", configSourceUV);
         return false;
     }
 
@@ -191,9 +189,9 @@ bool CalcTangentsProcess::ProcessMesh(aiMesh *pMesh, unsigned int meshIndex) {
         tangent.x = (w.x * sy - v.x * ty) * dirCorrection;
         tangent.y = (w.y * sy - v.y * ty) * dirCorrection;
         tangent.z = (w.z * sy - v.z * ty) * dirCorrection;
-        bitangent.x = (w.x * sx - v.x * tx) * dirCorrection;
-        bitangent.y = (w.y * sx - v.y * tx) * dirCorrection;
-        bitangent.z = (w.z * sx - v.z * tx) * dirCorrection;
+        bitangent.x = (- w.x * sx + v.x * tx) * dirCorrection;
+        bitangent.y = (- w.y * sx + v.y * tx) * dirCorrection;
+        bitangent.z = (- w.z * sx + v.z * tx) * dirCorrection;
 
         // store for every vertex of that face
         for (unsigned int b = 0; b < face.mNumIndices; ++b) {
@@ -201,7 +199,7 @@ bool CalcTangentsProcess::ProcessMesh(aiMesh *pMesh, unsigned int meshIndex) {
 
             // project tangent and bitangent into the plane formed by the vertex' normal
             aiVector3D localTangent = tangent - meshNorm[p] * (tangent * meshNorm[p]);
-            aiVector3D localBitangent = bitangent - meshNorm[p] * (bitangent * meshNorm[p]);
+            aiVector3D localBitangent = bitangent - meshNorm[p] * (bitangent * meshNorm[p]) - localTangent * (bitangent * localTangent);
             localTangent.NormalizeSafe();
             localBitangent.NormalizeSafe();
 

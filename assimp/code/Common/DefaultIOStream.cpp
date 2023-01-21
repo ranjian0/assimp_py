@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 All rights reserved.
 
@@ -62,8 +62,8 @@ inline int select_fseek(FILE *file, int64_t offset, int origin) {
 }
 
 
-    
-#if defined _WIN32 && (!defined __GNUC__ || __MSVCRT_VERSION__ >= 0x0601)
+
+#if defined _WIN32 && (!defined __GNUC__ || !defined __CLANG__ && __MSVCRT_VERSION__ >= 0x0601)
 template <>
 inline size_t select_ftell<8>(FILE *file) {
     return (size_t)::_ftelli64(file);
@@ -74,15 +74,14 @@ inline int select_fseek<8>(FILE *file, int64_t offset, int origin) {
     return ::_fseeki64(file, offset, origin);
 }
 
-#endif // #if defined _WIN32 && (!defined __GNUC__ || __MSVCRT_VERSION__ >= 0x0601)
-    
+#endif
+
 } // namespace
 
 // ----------------------------------------------------------------------------------
 DefaultIOStream::~DefaultIOStream() {
     if (mFile) {
         ::fclose(mFile);
-        mFile = nullptr;
     }
 }
 
@@ -90,9 +89,11 @@ DefaultIOStream::~DefaultIOStream() {
 size_t DefaultIOStream::Read(void *pvBuffer,
         size_t pSize,
         size_t pCount) {
+    if (0 == pCount) {
+        return 0;
+    }
     ai_assert(nullptr != pvBuffer);
     ai_assert(0 != pSize);
-    ai_assert(0 != pCount);
 
     return (mFile ? ::fread(pvBuffer, pSize, pCount, mFile) : 0);
 }
@@ -148,10 +149,17 @@ size_t DefaultIOStream::FileSize() const {
         //
         // See here for details:
         // https://www.securecoding.cert.org/confluence/display/seccode/FIO19-C.+Do+not+use+fseek()+and+ftell()+to+compute+the+size+of+a+regular+file
-#if defined _WIN32 && (!defined __GNUC__ || __MSVCRT_VERSION__ >= 0x0601)
+#if defined _WIN32 && (!defined __GNUC__ || !defined __CLANG__ && __MSVCRT_VERSION__ >= 0x0601)
         struct __stat64 fileStat;
         //using fileno + fstat avoids having to handle the filename
         int err = _fstat64(_fileno(mFile), &fileStat);
+        if (0 != err)
+            return 0;
+        mCachedSize = (size_t)(fileStat.st_size);
+#elif defined _WIN32
+        struct _stat32 fileStat;
+        //using fileno + fstat avoids having to handle the filename
+        int err = _fstat32(_fileno(mFile), &fileStat);
         if (0 != err)
             return 0;
         mCachedSize = (size_t)(fileStat.st_size);

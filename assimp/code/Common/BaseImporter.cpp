@@ -3,9 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
-
-
+Copyright (c) 2006-2022, assimp team
 
 All rights reserved.
 
@@ -67,27 +65,12 @@ using namespace Assimp;
 // Constructor to be privately used by Importer
 BaseImporter::BaseImporter() AI_NO_EXCEPT
         : m_progress() {
-    /**
-    * Assimp Importer
-    * unit conversions available
-    * if you need another measurment unit add it below.
-    * it's currently defined in assimp that we prefer meters.
-    *
-    * NOTE: Initialised here rather than in the header file
-    * to workaround a VS2013 bug with brace initialisers
-    * */
-    importerUnits[ImporterUnits::M] = 1.0;
-    importerUnits[ImporterUnits::CM] = 0.01;
-    importerUnits[ImporterUnits::MM] = 0.001;
-    importerUnits[ImporterUnits::INCHES] = 0.0254;
-    importerUnits[ImporterUnits::FEET] = 0.3048;
+    // empty
 }
 
 // ------------------------------------------------------------------------------------------------
 // Destructor, private as well
-BaseImporter::~BaseImporter() {
-    // nothing to do here
-}
+BaseImporter::~BaseImporter() = default;
 
 void BaseImporter::UpdateImporterScale(Importer *pImp) {
     ai_assert(pImp != nullptr);
@@ -99,7 +82,7 @@ void BaseImporter::UpdateImporterScale(Importer *pImp) {
     // Set active scaling
     pImp->SetPropertyFloat(AI_CONFIG_APP_SCALE_KEY, static_cast<float>(activeScale));
 
-    ASSIMP_LOG_DEBUG_F("UpdateImporterScale scale set: %f", activeScale);
+    ASSIMP_LOG_DEBUG("UpdateImporterScale scale set: ", activeScale);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -130,10 +113,11 @@ aiScene *BaseImporter::ReadFile(Importer *pImp, const std::string &pFile, IOSyst
         // passes scale into ScaleProcess
         UpdateImporterScale(pImp);
 
-    } catch (const std::exception &err) {
+    } catch( const std::exception &err ) {
         // extract error description
         m_ErrorText = err.what();
-        ASSIMP_LOG_ERROR(m_ErrorText);
+        ASSIMP_LOG_ERROR(err.what());
+        m_Exception = std::current_exception();
         return nullptr;
     }
 
@@ -171,7 +155,7 @@ void BaseImporter::GetExtensionList(std::set<std::string> &extensions) {
 /*static*/ bool BaseImporter::SearchFileHeaderForToken(IOSystem *pIOHandler,
         const std::string &pFile,
         const char **tokens,
-        unsigned int numTokens,
+        std::size_t numTokens,
         unsigned int searchBytes /* = 200 */,
         bool tokensSol /* false */,
         bool noAlphaBeforeTokens /* false */) {
@@ -194,7 +178,7 @@ void BaseImporter::GetExtensionList(std::set<std::string> &extensions) {
         }
 
         for (size_t i = 0; i < read; ++i) {
-            buffer[i] = static_cast<char>(::tolower(buffer[i]));
+            buffer[i] = static_cast<char>(::tolower((unsigned char)buffer[i]));
         }
 
         // It is not a proper handling of unicode files here ...
@@ -215,22 +199,22 @@ void BaseImporter::GetExtensionList(std::set<std::string> &extensions) {
             token.clear();
             const char *ptr(tokens[i]);
             for (size_t tokIdx = 0; tokIdx < len; ++tokIdx) {
-                token.push_back(static_cast<char>(tolower(*ptr)));
+                token.push_back(static_cast<char>(tolower(static_cast<unsigned char>(*ptr))));
                 ++ptr;
             }
             const char *r = strstr(buffer, token.c_str());
             if (!r) {
                 continue;
             }
-            // We need to make sure that we didn't accidentially identify the end of another token as our token,
+            // We need to make sure that we didn't accidentally identify the end of another token as our token,
             // e.g. in a previous version the "gltf " present in some gltf files was detected as "f "
-            if (noAlphaBeforeTokens && (r != buffer && isalpha(r[-1]))) {
+            if (noAlphaBeforeTokens && (r != buffer && isalpha(static_cast<unsigned char>(r[-1])))) {
                 continue;
             }
             // We got a match, either we don't care where it is, or it happens to
             // be in the beginning of the file / line
             if (!tokensSol || r == buffer || r[-1] == '\r' || r[-1] == '\n') {
-                ASSIMP_LOG_DEBUG_F("Found positive match for header keyword: ", tokens[i]);
+                ASSIMP_LOG_DEBUG("Found positive match for header keyword: ", tokens[i]);
                 return true;
             }
         }
@@ -248,19 +232,23 @@ void BaseImporter::GetExtensionList(std::set<std::string> &extensions) {
     std::string::size_type pos = pFile.find_last_of('.');
 
     // no file extension - can't read
-    if (pos == std::string::npos)
+    if (pos == std::string::npos) {
         return false;
+    }
 
     const char *ext_real = &pFile[pos + 1];
-    if (!ASSIMP_stricmp(ext_real, ext0))
+    if (!ASSIMP_stricmp(ext_real, ext0)) {
         return true;
+    }
 
     // check for other, optional, file extensions
-    if (ext1 && !ASSIMP_stricmp(ext_real, ext1))
+    if (ext1 && !ASSIMP_stricmp(ext_real, ext1)) {
         return true;
+    }
 
-    if (ext2 && !ASSIMP_stricmp(ext_real, ext2))
-        return true;
+    if (ext2 && !ASSIMP_stricmp(ext_real, ext2)) {
+        return true;        
+    }
 
     return false;
 }
@@ -272,20 +260,21 @@ std::string BaseImporter::GetExtension(const std::string &file) {
 
     // no file extension at all
     if (pos == std::string::npos) {
-        return "";
+        return std::string();
     }
 
     // thanks to Andy Maloney for the hint
     std::string ret = file.substr(pos + 1);
-    std::transform(ret.begin(), ret.end(), ret.begin(), ToLower<char>);
+    ret = ai_tolower(ret);
 
     return ret;
 }
 
+
 // ------------------------------------------------------------------------------------------------
 // Check for magic bytes at the beginning of the file.
 /* static */ bool BaseImporter::CheckMagicToken(IOSystem *pIOHandler, const std::string &pFile,
-        const void *_magic, unsigned int num, unsigned int offset, unsigned int size) {
+        const void *_magic, std::size_t num, unsigned int offset, unsigned int size) {
     ai_assert(size <= 16);
     ai_assert(_magic);
 
@@ -387,7 +376,10 @@ void BaseImporter::ConvertToUTF8(std::vector<char> &data) {
 
     // UTF 16 BE with BOM
     if (*((uint16_t *)&data.front()) == 0xFFFE) {
-
+        // Check to ensure no overflow can happen
+        if(data.size() % 2 != 0) {
+            return;
+        }
         // swap the endianness ..
         for (uint16_t *p = (uint16_t *)&data.front(), *end = (uint16_t *)&data.back(); p <= end; ++p) {
             ByteSwap::Swap2(p);
@@ -619,7 +611,7 @@ void BatchLoader::LoadAll() {
 
         if (!DefaultLogger::isNullLogger()) {
             ASSIMP_LOG_INFO("%%% BEGIN EXTERNAL FILE %%%");
-            ASSIMP_LOG_INFO_F("File: ", (*it).file);
+            ASSIMP_LOG_INFO("File: ", (*it).file);
         }
         m_data->pImporter->ReadFile((*it).file, pp);
         (*it).scene = m_data->pImporter->GetOrphanedScene();

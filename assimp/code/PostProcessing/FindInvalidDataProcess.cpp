@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 All rights reserved.
 
@@ -62,9 +62,7 @@ FindInvalidDataProcess::FindInvalidDataProcess() :
 
 // ------------------------------------------------------------------------------------------------
 // Destructor, private as well
-FindInvalidDataProcess::~FindInvalidDataProcess() {
-    // nothing to do here
-}
+FindInvalidDataProcess::~FindInvalidDataProcess() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Returns whether the processing step is present in the given flag field.
@@ -200,7 +198,7 @@ inline bool ProcessArray(T *&in, unsigned int num, const char *name,
         const std::vector<bool> &dirtyMask, bool mayBeIdentical = false, bool mayBeZero = true) {
     const char *err = ValidateArrayContents(in, num, dirtyMask, mayBeIdentical, mayBeZero);
     if (err) {
-        ASSIMP_LOG_ERROR_F("FindInvalidDataProcess fails on mesh ", name, ": ", err);
+        ASSIMP_LOG_ERROR("FindInvalidDataProcess fails on mesh ", name, ": ", err);
         delete[] in;
         in = nullptr;
         return true;

@@ -2,8 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
-
+Copyright (c) 2006-2022, assimp team
 
 All rights reserved.
 
@@ -47,12 +46,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define AI_XGLLOADER_H_INCLUDED
 
 #include <assimp/BaseImporter.h>
+#include <assimp/XmlParser.h>
 #include <assimp/LogAux.h>
-#include <assimp/irrXMLWrapper.h>
 #include <assimp/light.h>
 #include <assimp/material.h>
 #include <assimp/mesh.h>
+#include <assimp/light.h>
 #include <assimp/Importer.hpp>
+#include <assimp/XmlParser.h>
+
 #include <map>
 #include <memory>
 
@@ -68,31 +70,32 @@ namespace Assimp {
 class XGLImporter : public BaseImporter, public LogFunctions<XGLImporter> {
 public:
     XGLImporter();
-    ~XGLImporter();
+    ~XGLImporter() override;
 
-public:
     // -------------------------------------------------------------------
     /** Returns whether the class can handle the format of the given file.
      *  See BaseImporter::CanRead() for details.    */
     bool CanRead(const std::string &pFile, IOSystem *pIOHandler,
-            bool checkSig) const;
+            bool checkSig) const override;
 
 protected:
     // -------------------------------------------------------------------
     /** Return importer meta information.
      * See #BaseImporter::GetInfo for the details  */
-    const aiImporterDesc *GetInfo() const;
+    const aiImporterDesc *GetInfo() const override;
 
     // -------------------------------------------------------------------
     /** Imports the given file into the given scene structure.
      * See BaseImporter::InternReadFile() for details */
     void InternReadFile(const std::string &pFile, aiScene *pScene,
-            IOSystem *pIOHandler);
+            IOSystem *pIOHandler) override;
 
 private:
     struct TempScope {
         TempScope() :
-                light() {}
+                light() {
+            // empty
+        }
 
         ~TempScope() {
             for (aiMesh *m : meshes_linear) {
@@ -125,7 +128,9 @@ private:
 
     struct SortMeshByMaterialId {
         SortMeshByMaterialId(const TempScope &scope) :
-                scope(scope) {}
+                scope(scope) {
+            // empty
+        }
         bool operator()(unsigned int a, unsigned int b) const {
             return scope.meshes_linear[a]->mMaterialIndex < scope.meshes_linear[b]->mMaterialIndex;
         };
@@ -141,7 +146,10 @@ private:
 
     struct TempMaterialMesh {
         TempMaterialMesh() :
-                pflags(), matid() {}
+                pflags(),
+                matid() {
+            // empty
+        }
 
         std::vector<aiVector3D> positions, normals;
         std::vector<aiVector2D> uvs;
@@ -153,7 +161,10 @@ private:
 
     struct TempFace {
         TempFace() :
-                has_uv(), has_normal() {}
+                has_uv(),
+                has_normal() {
+            // empty
+        }
 
         aiVector3D pos;
         aiVector3D normal;
@@ -169,27 +180,27 @@ private:
     bool ReadElement();
     bool ReadElementUpToClosing(const char *closetag);
     bool SkipToText();
-    unsigned int ReadIDAttr();
+    unsigned int ReadIDAttr(XmlNode &node);
 
-    void ReadWorld(TempScope &scope);
-    void ReadLighting(TempScope &scope);
-    aiLight *ReadDirectionalLight();
-    aiNode *ReadObject(TempScope &scope, bool skipFirst = false, const char *closetag = "object");
-    bool ReadMesh(TempScope &scope);
-    void ReadMaterial(TempScope &scope);
-    aiVector2D ReadVec2();
-    aiVector3D ReadVec3();
-    aiColor3D ReadCol3();
-    aiMatrix4x4 ReadTrafo();
-    unsigned int ReadIndexFromText();
-    float ReadFloat();
+    void ReadWorld(XmlNode &node, TempScope &scope);
+    void ReadLighting(XmlNode &node, TempScope &scope);
+    aiLight *ReadDirectionalLight(XmlNode &node);
+    aiNode *ReadObject(XmlNode &node, TempScope &scope);
+    bool ReadMesh(XmlNode &node, TempScope &scope, bool &empty);
+    void ReadMaterial(XmlNode &node, TempScope &scope);
+    aiVector2D ReadVec2(XmlNode &node);
+    aiVector3D ReadVec3(XmlNode &node);
+    aiColor3D ReadCol3(XmlNode &node);
+    aiMatrix4x4 ReadTrafo(XmlNode &node);
+    unsigned int ReadIndexFromText(XmlNode &node);
+    float ReadFloat(XmlNode &node);
 
     aiMesh *ToOutputMesh(const TempMaterialMesh &m);
-    void ReadFaceVertex(const TempMesh &t, TempFace &out);
-    unsigned int ResolveMaterialRef(TempScope &scope);
+    void ReadFaceVertex(XmlNode &node, const TempMesh &t, TempFace &out);
+    unsigned int ResolveMaterialRef(XmlNode &node, TempScope &scope);
 
 private:
-    std::shared_ptr<irr::io::IrrXMLReader> m_reader;
+    XmlParser *mXmlParser;
     aiScene *m_scene;
 };
 

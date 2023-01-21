@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 All rights reserved.
 
@@ -69,35 +69,19 @@ static const aiImporterDesc desc = {
 // ------------------------------------------------------------------------------------------------
 // Constructor to be privately used by Importer
 TerragenImporter::TerragenImporter() :
-        configComputeUVs(false) {}
+        configComputeUVs(false) {
+    // empty
+}
 
 // ------------------------------------------------------------------------------------------------
 // Destructor, private as well
-TerragenImporter::~TerragenImporter() {}
+TerragenImporter::~TerragenImporter() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Returns whether the class can handle the format of the given file.
-bool TerragenImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, bool checkSig) const {
-    // check file extension
-    std::string extension = GetExtension(pFile);
-
-    if (extension == "ter")
-        return true;
-
-    if (!extension.length() || checkSig) {
-        /*  If CanRead() is called in order to check whether we
-         *  support a specific file extension in general pIOHandler
-         *  might be nullptr and it's our duty to return true here.
-         */
-        if (!pIOHandler) {
-            return true;
-        }
-
-        const char *tokens[] = { "terragen" };
-        return SearchFileHeaderForToken(pIOHandler, pFile, tokens, 1);
-    }
-
-    return false;
+bool TerragenImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, bool /*checkSig*/) const {
+    static const char *tokens[] = { "terragen" };
+    return SearchFileHeaderForToken(pIOHandler, pFile, tokens, AI_COUNT_OF(tokens));
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -121,7 +105,7 @@ void TerragenImporter::InternReadFile(const std::string &pFile,
 
     // Check whether we can read from the file
     if (file == nullptr)
-        throw DeadlyImportError("Failed to open TERRAGEN TERRAIN file " + pFile + ".");
+        throw DeadlyImportError("Failed to open TERRAGEN TERRAIN file ", pFile, ".");
 
     // Construct a stream reader to read all data in the correct endianness
     StreamReaderLE reader(file);

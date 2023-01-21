@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 All rights reserved.
 
@@ -48,8 +48,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <assimp/IOStreamBuffer.h>
 #include <vector>
 
-namespace Assimp
-{
+namespace Assimp {
 
 //pre-declaration
 class PLYImporter;
@@ -432,7 +431,7 @@ public:
     static bool ParseInstanceBinary(IOStreamBuffer<char> &streamBuffer, DOM* p_pcOut, PLYImporter* loader, bool p_bBE);
 
     //! Skip all comment lines after this
-    static bool SkipComments(std::vector<char> &buffer);
+    static bool SkipComments(std::vector<char> buffer);
 
     static bool SkipSpaces(std::vector<char> &buffer);
 

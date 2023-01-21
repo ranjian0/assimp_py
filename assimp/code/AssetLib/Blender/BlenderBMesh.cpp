@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 All rights reserved.
 
 Redistribution and use of this software in source and binary forms,
@@ -140,7 +140,7 @@ void BlenderBMeshConverter::ConvertPolyToFaces(const MPoly &poly) {
                 ThrowException("BMesh uv loop array has incorrect size");
             }
             const MLoopUV *loopUV = &BMesh->mloopuv[poly.loopstart];
-            AddTFace(loopUV[0].uv, loopUV[1].uv, loopUV[2].uv, poly.totloop == 4 ? loopUV[3].uv : 0);
+            AddTFace(loopUV[0].uv, loopUV[1].uv, loopUV[2].uv, poly.totloop == 4 ? loopUV[3].uv : nullptr);
         }
     } else if (poly.totloop > 4) {
 #if ASSIMP_BLEND_WITH_GLU_TESSELLATE

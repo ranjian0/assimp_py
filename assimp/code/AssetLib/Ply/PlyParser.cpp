@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 
 All rights reserved.
@@ -48,6 +48,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <assimp/ByteSwapper.h>
 #include <assimp/fast_atof.h>
 #include <assimp/DefaultLogger.hpp>
+#include <utility>
 
 using namespace Assimp;
 
@@ -381,10 +382,10 @@ bool PLY::DOM::SkipSpacesAndLineEnd(std::vector<char> &buffer) {
     return ret;
 }
 
-bool PLY::DOM::SkipComments(std::vector<char> &buffer) {
+bool PLY::DOM::SkipComments(std::vector<char> buffer) {
     ai_assert(!buffer.empty());
 
-    std::vector<char> nbuffer = buffer;
+    std::vector<char> nbuffer = std::move(buffer);
     // skip spaces
     if (!SkipSpaces(nbuffer)) {
         return false;
@@ -419,7 +420,7 @@ bool PLY::DOM::ParseHeader(IOStreamBuffer<char> &streamBuffer, std::vector<char>
         if (PLY::Element::ParseElement(streamBuffer, buffer, &out)) {
             // add the element to the list of elements
             alElements.push_back(out);
-        } else if (TokenMatch(buffer, "end_header", 10)) {
+        } else if (TokenMatch(buffer, "end_header", 10)) { //checks for /n ending, if it doesn't end with /r/n
             // we have reached the end of the header
             break;
         } else {
@@ -500,6 +501,7 @@ bool PLY::DOM::ParseInstanceBinary(IOStreamBuffer<char> &streamBuffer, DOM *p_pc
     }
 
     streamBuffer.getNextBlock(buffer);
+
     unsigned int bufferSize = static_cast<unsigned int>(buffer.size());
     const char *pCur = (char *)&buffer[0];
     if (!p_pcOut->ParseElementInstanceListsBinary(streamBuffer, buffer, pCur, bufferSize, loader, p_bBE)) {

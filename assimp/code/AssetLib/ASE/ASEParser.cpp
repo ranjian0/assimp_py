@@ -3,9 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
-
-
+Copyright (c) 2006-2022, assimp team
 
 All rights reserved.
 
@@ -76,7 +74,7 @@ using namespace Assimp::ASE;
             return;                                \
         }                                          \
     }                                              \
-    else if ('\0' == *filePtr) {                   \
+    if ('\0' == *filePtr) {                        \
         return;                                    \
     }                                              \
     if (IsLineEnd(*filePtr) && !bLastWasEndLine) { \
@@ -114,6 +112,7 @@ using namespace Assimp::ASE;
 // ------------------------------------------------------------------------------------------------
 Parser::Parser(const char *szFile, unsigned int fileFormatDefault) {
     ai_assert(nullptr != szFile);
+
     filePtr = szFile;
     iFileFormat = fileFormatDefault;
 
@@ -265,7 +264,7 @@ void Parser::Parse() {
             if (TokenMatch(filePtr, "GEOMOBJECT", 10))
 
             {
-                m_vMeshes.push_back(Mesh("UNNAMED"));
+                m_vMeshes.emplace_back("UNNAMED");
                 ParseLV1ObjectBlock(m_vMeshes.back());
                 continue;
             }
@@ -273,7 +272,7 @@ void Parser::Parse() {
             if (TokenMatch(filePtr, "HELPEROBJECT", 12))
 
             {
-                m_vDummies.push_back(Dummy());
+                m_vDummies.emplace_back();
                 ParseLV1ObjectBlock(m_vDummies.back());
                 continue;
             }
@@ -281,13 +280,13 @@ void Parser::Parse() {
             if (TokenMatch(filePtr, "LIGHTOBJECT", 11))
 
             {
-                m_vLights.push_back(Light("UNNAMED"));
+                m_vLights.emplace_back("UNNAMED");
                 ParseLV1ObjectBlock(m_vLights.back());
                 continue;
             }
             // camera object
             if (TokenMatch(filePtr, "CAMERAOBJECT", 12)) {
-                m_vCameras.push_back(Camera("UNNAMED"));
+                m_vCameras.emplace_back("UNNAMED");
                 ParseLV1ObjectBlock(m_vCameras.back());
                 continue;
             }
@@ -386,7 +385,7 @@ void Parser::ParseLV1SoftSkinBlock() {
                         unsigned int numWeights;
                         ParseLV4MeshLong(numWeights);
 
-                        curMesh->mBoneVertices.push_back(ASE::BoneVertex());
+                        curMesh->mBoneVertices.emplace_back();
                         ASE::BoneVertex &vert = curMesh->mBoneVertices.back();
 
                         // Reserve enough storage
@@ -410,7 +409,7 @@ void Parser::ParseLV1SoftSkinBlock() {
                             if (-1 == me.first) {
                                 // We don't have this bone yet, so add it to the list
                                 me.first = static_cast<int>(curMesh->mBones.size());
-                                curMesh->mBones.push_back(ASE::Bone(bone));
+                                curMesh->mBones.emplace_back(bone);
                             }
                             ParseLV4MeshFloat(me.second);
 
@@ -421,6 +420,8 @@ void Parser::ParseLV1SoftSkinBlock() {
                 }
             }
         }
+        if (*filePtr == '\0')
+            return;
         ++filePtr;
         SkipSpacesAndLineEnd(&filePtr);
     }
@@ -490,6 +491,7 @@ void Parser::ParseLV1MaterialListBlock() {
                 if (iIndex >= iMaterialCount) {
                     LogWarning("Out of range: material index is too large");
                     iIndex = iMaterialCount - 1;
+                    return;
                 }
 
                 // get a reference to the material
@@ -497,6 +499,12 @@ void Parser::ParseLV1MaterialListBlock() {
                 // parse the material block
                 ParseLV2MaterialBlock(sMat);
                 continue;
+            }
+            if( iDepth == 1 ){
+                // CRUDE HACK: support missing brace after "Ascii Scene Exporter v2.51"
+                LogWarning("Missing closing brace in material list");
+                --filePtr;
+                return;
             }
         }
         AI_ASE_HANDLE_TOP_LEVEL_SECTION();
@@ -640,10 +648,13 @@ void Parser::ParseLV2MaterialBlock(ASE::Material &mat) {
                 }
 
                 // get a reference to the material
-                Material &sMat = mat.avSubMaterials[iIndex];
+                if (iIndex < mat.avSubMaterials.size()) {
+                    Material &sMat = mat.avSubMaterials[iIndex];
 
-                // parse the material block
-                ParseLV2MaterialBlock(sMat);
+                    // parse the material block
+                    ParseLV2MaterialBlock(sMat);
+                }
+
                 continue;
             }
         }
@@ -671,7 +682,7 @@ void Parser::ParseLV3MapBlock(Texture &map) {
                 if (!ParseString(temp, "*MAP_CLASS"))
                     SkipToNextToken();
                 if (temp != "Bitmap" && temp != "Normal Bump") {
-                    ASSIMP_LOG_WARN_F("ASE: Skipping unknown map type: ", temp);
+                    ASSIMP_LOG_WARN("ASE: Skipping unknown map type: ", temp);
                     parsePath = false;
                 }
                 continue;
@@ -685,7 +696,7 @@ void Parser::ParseLV3MapBlock(Texture &map) {
                     // Files with 'None' as map name are produced by
                     // an Maja to ASE exporter which name I forgot ..
                     ASSIMP_LOG_WARN("ASE: Skipping invalid map entry");
-                    map.mMapName = "";
+                    map.mMapName = std::string();
                 }
 
                 continue;
@@ -900,7 +911,6 @@ void Parser::ParseLV2LightSettingsBlock(ASE::Light &light) {
         }
         AI_ASE_HANDLE_SECTION("2", "LIGHT_SETTINGS");
     }
-    return;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1001,7 +1011,7 @@ void Parser::ParseLV3ScaleAnimationBlock(ASE::Animation &anim) {
                 anim.mScalingType = ASE::Animation::TCB;
             }
             if (b) {
-                anim.akeyScaling.push_back(aiVectorKey());
+                anim.akeyScaling.emplace_back();
                 aiVectorKey &key = anim.akeyScaling.back();
                 ParseLV4MeshFloatTriple(&key.mValue.x, iIndex);
                 key.mTime = (double)iIndex;
@@ -1040,7 +1050,7 @@ void Parser::ParseLV3PosAnimationBlock(ASE::Animation &anim) {
                 anim.mPositionType = ASE::Animation::TCB;
             }
             if (b) {
-                anim.akeyPositions.push_back(aiVectorKey());
+                anim.akeyPositions.emplace_back();
                 aiVectorKey &key = anim.akeyPositions.back();
                 ParseLV4MeshFloatTriple(&key.mValue.x, iIndex);
                 key.mTime = (double)iIndex;
@@ -1079,7 +1089,7 @@ void Parser::ParseLV3RotAnimationBlock(ASE::Animation &anim) {
                 anim.mRotationType = ASE::Animation::TCB;
             }
             if (b) {
-                anim.akeyRotations.push_back(aiQuatKey());
+                anim.akeyRotations.emplace_back();
                 aiQuatKey &key = anim.akeyRotations.back();
                 aiVector3D v;
                 ai_real f;
@@ -1119,7 +1129,7 @@ void Parser::ParseLV2NodeTransformBlock(ASE::BaseNode &mesh) {
                                          "this is no spot light or target camera");
                     }
                 } else {
-                    ASSIMP_LOG_ERROR("ASE: Unknown node transformation: " + temp);
+                    ASSIMP_LOG_ERROR("ASE: Unknown node transformation: ", temp);
                     // mode = 0
                 }
                 continue;
@@ -1764,7 +1774,13 @@ void Parser::ParseLV4MeshFace(ASE::Face &out) {
         // FIX: There needn't always be a value, sad but true
         while (true) {
             if (*filePtr < '9' && *filePtr >= '0') {
-                out.iSmoothGroup |= (1 << strtoul10(filePtr, &filePtr));
+                uint32_t value = strtoul10(filePtr, &filePtr);
+                if (value < 32) {
+                    out.iSmoothGroup |= (1 << strtoul10(filePtr, &filePtr));
+                } else {
+                    const std::string message = std::string("Unable to set smooth group, value with ") + ai_to_string(value) + std::string(" out of range");
+                    LogWarning(message.c_str());
+                }
             }
             SkipSpaces(&filePtr);
             if (',' != *filePtr) {
@@ -1777,7 +1793,9 @@ void Parser::ParseLV4MeshFace(ASE::Face &out) {
 
     // *MESH_MTLID  is optional, too
     while (true) {
-        if ('*' == *filePtr) break;
+        if ('*' == *filePtr) {
+            break;
+        }
         if (IsLineEnd(*filePtr)) {
             return;
         }
@@ -1826,8 +1844,9 @@ void Parser::ParseLV4MeshFloatTriple(ai_real *apOut, unsigned int &rIndexOut) {
 void Parser::ParseLV4MeshFloatTriple(ai_real *apOut) {
     ai_assert(nullptr != apOut);
 
-    for (unsigned int i = 0; i < 3; ++i)
+    for (unsigned int i = 0; i < 3; ++i) {
         ParseLV4MeshFloat(apOut[i]);
+    }
 }
 // ------------------------------------------------------------------------------------------------
 void Parser::ParseLV4MeshFloat(ai_real &fOut) {

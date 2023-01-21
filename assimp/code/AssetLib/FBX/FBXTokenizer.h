@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 
 All rights reserved.
@@ -96,7 +96,7 @@ public:
     /** construct a binary token */
     Token(const char* sbegin, const char* send, TokenType type, size_t offset);
 
-    ~Token();
+    ~Token() = default;
 
 public:
     std::string StringContents() const {
@@ -154,7 +154,6 @@ private:
     const unsigned int column;
 };
 
-// XXX should use C++11's unique_ptr - but assimp's need to keep working with 03
 typedef const Token* TokenPtr;
 typedef std::vector< TokenPtr > TokenList;
 

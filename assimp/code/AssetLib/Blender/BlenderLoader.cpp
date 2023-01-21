@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 
 All rights reserved.
@@ -63,22 +63,27 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <assimp/StringComparison.h>
 
 #include <cctype>
+#include <memory>
+#include <utility>
 
 // zlib is needed for compressed blend files
 #ifndef ASSIMP_BUILD_NO_COMPRESSED_BLEND
-#ifdef ASSIMP_BUILD_NO_OWN_ZLIB
-#include <zlib.h>
-#else
-#include "../contrib/zlib/zlib.h"
-#endif
+#include "Common/Compression.h"
+/* #ifdef ASSIMP_BUILD_NO_OWN_ZLIB
+#    include <zlib.h>
+#  else
+#    include "../contrib/zlib/zlib.h"
+#  endif*/
 #endif
 
 namespace Assimp {
+
 template <>
 const char *LogFunctions<BlenderImporter>::Prefix() {
     static auto prefix = "BLEND: ";
     return prefix;
 }
+
 } // namespace Assimp
 
 using namespace Assimp;
@@ -86,7 +91,7 @@ using namespace Assimp::Blender;
 using namespace Assimp::Formatter;
 
 static const aiImporterDesc blenderDesc = {
-    "Blender 3D Importer \nhttp://www.blender3d.org",
+    "Blender 3D Importer (http://www.blender3d.org)",
     "",
     "",
     "No animation support yet",
@@ -111,28 +116,15 @@ BlenderImporter::~BlenderImporter() {
     delete modifier_cache;
 }
 
-static const char *Tokens[] = { "BLENDER" };
-static const char *TokensForSearch[] = { "blender" };
+static const char * const Tokens[] = { "BLENDER" };
 
 // ------------------------------------------------------------------------------------------------
 // Returns whether the class can handle the format of the given file.
-bool BlenderImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, bool checkSig) const {
-    const std::string &extension = GetExtension(pFile);
-    if (extension == "blend") {
-        return true;
-    }
+bool BlenderImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, bool /*checkSig*/) const {
+    // note: this won't catch compressed files
+    static const char *tokens[] = { "<BLENDER", "blender" };
 
-    else if ((!extension.length() || checkSig) && pIOHandler) {
-        // note: this won't catch compressed files
-        return SearchFileHeaderForToken(pIOHandler, pFile, TokensForSearch, 1);
-    }
-    return false;
-}
-
-// ------------------------------------------------------------------------------------------------
-// List all extensions handled by this loader
-void BlenderImporter::GetExtensionList(std::set<std::string> &app) {
-    app.insert("blend");
+    return SearchFileHeaderForToken(pIOHandler, pFile, tokens, AI_COUNT_OF(tokens));
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -152,7 +144,7 @@ void BlenderImporter::SetupProperties(const Importer * /*pImp*/) {
 void BlenderImporter::InternReadFile(const std::string &pFile,
         aiScene *pScene, IOSystem *pIOHandler) {
 #ifndef ASSIMP_BUILD_NO_COMPRESSED_BLEND
-    std::vector<Bytef> uncompressed;
+    std::vector<char> uncompressed;
 #endif
 
     FileDatabase file;
@@ -170,7 +162,6 @@ void BlenderImporter::InternReadFile(const std::string &pFile,
 #ifdef ASSIMP_BUILD_NO_COMPRESSED_BLEND
         ThrowException("BLENDER magic bytes are missing, is this file compressed (Assimp was built without decompression support)?");
 #else
-
         if (magic[0] != 0x1f || static_cast<uint8_t>(magic[1]) != 0x8b) {
             ThrowException("BLENDER magic bytes are missing, couldn't find GZIP header either");
         }
@@ -184,45 +175,15 @@ void BlenderImporter::InternReadFile(const std::string &pFile,
         stream->Seek(0L, aiOrigin_SET);
         std::shared_ptr<StreamReaderLE> reader = std::shared_ptr<StreamReaderLE>(new StreamReaderLE(stream));
 
-        // build a zlib stream
-        z_stream zstream;
-        zstream.opaque = Z_NULL;
-        zstream.zalloc = Z_NULL;
-        zstream.zfree = Z_NULL;
-        zstream.data_type = Z_BINARY;
-
-        // http://hewgill.com/journal/entries/349-how-to-decompress-gzip-stream-with-zlib
-        inflateInit2(&zstream, 16 + MAX_WBITS);
-
-        zstream.next_in = reinterpret_cast<Bytef *>(reader->GetPtr());
-        zstream.avail_in = (uInt)reader->GetRemainingSize();
-
-        size_t total = 0l;
-
-        // TODO: be smarter about this, decompress directly into heap buffer
-        // and decompress the data .... do 1k chunks in the hope that we won't kill the stack
-#define MYBLOCK 1024
-        Bytef block[MYBLOCK];
-        int ret;
-        do {
-            zstream.avail_out = MYBLOCK;
-            zstream.next_out = block;
-            ret = inflate(&zstream, Z_NO_FLUSH);
-
-            if (ret != Z_STREAM_END && ret != Z_OK) {
-                ThrowException("Failure decompressing this file using gzip, seemingly it is NOT a compressed .BLEND file");
-            }
-            const size_t have = MYBLOCK - zstream.avail_out;
-            total += have;
-            uncompressed.resize(total);
-            memcpy(uncompressed.data() + total - have, block, have);
-        } while (ret != Z_STREAM_END);
-
-        // terminate zlib
-        inflateEnd(&zstream);
+        size_t total = 0;
+        Compression compression;
+        if (compression.open(Compression::Format::Binary, Compression::FlushMode::NoFlush, 16 + Compression::MaxWBits)) {
+            total = compression.decompress((unsigned char *)reader->GetPtr(), reader->GetRemainingSize(), uncompressed);
+            compression.close();
+        }
 
         // replace the input stream with a memory stream
-        stream.reset(new MemoryIOStream(reinterpret_cast<uint8_t *>(uncompressed.data()), total));
+        stream = std::make_shared<MemoryIOStream>(reinterpret_cast<uint8_t *>(uncompressed.data()), total);
 
         // .. and retry
         stream->Read(magic, 7, 1);
@@ -238,11 +199,11 @@ void BlenderImporter::InternReadFile(const std::string &pFile,
     stream->Read(magic, 3, 1);
     magic[3] = '\0';
 
-    LogInfo((format(), "Blender version is ", magic[0], ".", magic + 1,
+    LogInfo("Blender version is ", magic[0], ".", magic + 1,
             " (64bit: ", file.i64bit ? "true" : "false",
-            ", little endian: ", file.little ? "true" : "false", ")"));
+            ", little endian: ", file.little ? "true" : "false", ")");
 
-    ParseBlendFile(file, stream);
+    ParseBlendFile(file, std::move(stream));
 
     Scene scene;
     ExtractScene(scene, file);
@@ -252,14 +213,14 @@ void BlenderImporter::InternReadFile(const std::string &pFile,
 
 // ------------------------------------------------------------------------------------------------
 void BlenderImporter::ParseBlendFile(FileDatabase &out, std::shared_ptr<IOStream> stream) {
-    out.reader = std::shared_ptr<StreamReaderAny>(new StreamReaderAny(stream, out.little));
+    out.reader = std::make_shared<StreamReaderAny>(stream, out.little);
 
     DNAParser dna_reader(out);
     const DNA *dna = nullptr;
 
     out.entries.reserve(128);
     { // even small BLEND files tend to consist of many file blocks
-        SectionParser parser(*out.reader.get(), out.i64bit);
+        SectionParser parser(*out.reader, out.i64bit);
 
         // first parse the file in search for the DNA and insert all other sections into the database
         while ((parser.Next(), 1)) {
@@ -313,7 +274,7 @@ void BlenderImporter::ExtractScene(Scene &out, const FileDatabase &file) {
     ss.Convert(out, file);
 
 #ifndef ASSIMP_BUILD_BLENDER_NO_STATS
-    ASSIMP_LOG_INFO_F(
+    ASSIMP_LOG_INFO(
             "(Stats) Fields read: ", file.stats().fields_read,
             ", pointers resolved: ", file.stats().pointers_resolved,
             ", cache hits: ", file.stats().cache_hits,
@@ -322,41 +283,80 @@ void BlenderImporter::ExtractScene(Scene &out, const FileDatabase &file) {
 }
 
 // ------------------------------------------------------------------------------------------------
+void BlenderImporter::ParseSubCollection(const Blender::Scene &in, aiNode *root, const std::shared_ptr<Collection>& collection, ConversionData &conv_data) {
+
+    std::deque<Object *> root_objects;
+    // Count number of objects
+    for (std::shared_ptr<CollectionObject> cur = std::static_pointer_cast<CollectionObject>(collection->gobject.first); cur; cur = cur->next) {
+        if (cur->ob) {
+            root_objects.push_back(cur->ob);
+        }
+    }
+    std::deque<Collection *> root_children;
+    // Count number of child nodes
+    for (std::shared_ptr<CollectionChild> cur = std::static_pointer_cast<CollectionChild>(collection->children.first); cur; cur = cur->next) {
+        if (cur->collection) {
+            root_children.push_back(cur->collection.get());
+        }
+    }
+    root->mNumChildren = static_cast<unsigned int>(root_objects.size() + root_children.size());
+    root->mChildren = new aiNode *[root->mNumChildren]();
+
+    for (unsigned int i = 0; i < static_cast<unsigned int>(root_objects.size()); ++i) {
+        root->mChildren[i] = ConvertNode(in, root_objects[i], conv_data, aiMatrix4x4());
+        root->mChildren[i]->mParent = root;
+    }
+
+    // For each subcollection create a new node to represent it
+    unsigned int iterator = static_cast<unsigned int>(root_objects.size());
+    for (std::shared_ptr<CollectionChild> cur = std::static_pointer_cast<CollectionChild>(collection->children.first); cur; cur = cur->next) {
+        if (cur->collection) {
+            root->mChildren[iterator] = new aiNode(cur->collection->id.name + 2); // skip over the name prefix 'OB'
+            root->mChildren[iterator]->mParent = root;
+            ParseSubCollection(in, root->mChildren[iterator], cur->collection, conv_data);
+        }
+        iterator += 1;
+    }
+}
+
+// ------------------------------------------------------------------------------------------------
 void BlenderImporter::ConvertBlendFile(aiScene *out, const Scene &in, const FileDatabase &file) {
     ConversionData conv(file);
 
-    // FIXME it must be possible to take the hierarchy directly from
-    // the file. This is terrible. Here, we're first looking for
-    // all objects which don't have parent objects at all -
-    std::deque<const Object *> no_parents;
-    for (std::shared_ptr<Base> cur = std::static_pointer_cast<Base>(in.base.first); cur; cur = cur->next) {
-        if (cur->object) {
-            if (!cur->object->parent) {
-                no_parents.push_back(cur->object.get());
-            } else {
-                conv.objects.insert(cur->object.get());
-            }
-        }
-    }
-    for (std::shared_ptr<Base> cur = in.basact; cur; cur = cur->next) {
-        if (cur->object) {
-            if (cur->object->parent) {
-                conv.objects.insert(cur->object.get());
-            }
-        }
-    }
-
-    if (no_parents.empty()) {
-        ThrowException("Expected at least one object with no parent");
-    }
-
     aiNode *root = out->mRootNode = new aiNode("<BlenderRoot>");
+    // Iterate over all objects directly under master_collection,
+    // If in.master_collection == null, then we're parsing something older.
+    if (in.master_collection) {
+        ParseSubCollection(in, root, in.master_collection, conv);
+    } else {
+        std::deque<const Object *> no_parents;
+        for (std::shared_ptr<Base> cur = std::static_pointer_cast<Base>(in.base.first); cur; cur = cur->next) {
+            if (cur->object) {
+                if (!cur->object->parent) {
+                    no_parents.push_back(cur->object.get());
+                } else {
+                    conv.objects.insert(cur->object.get());
+                }
+            }
+        }
+        for (std::shared_ptr<Base> cur = in.basact; cur; cur = cur->next) {
+            if (cur->object) {
+                if (cur->object->parent) {
+                    conv.objects.insert(cur->object.get());
+                }
+            }
+        }
 
-    root->mNumChildren = static_cast<unsigned int>(no_parents.size());
-    root->mChildren = new aiNode *[root->mNumChildren]();
-    for (unsigned int i = 0; i < root->mNumChildren; ++i) {
-        root->mChildren[i] = ConvertNode(in, no_parents[i], conv, aiMatrix4x4());
-        root->mChildren[i]->mParent = root;
+        if (no_parents.empty()) {
+            ThrowException("Expected at least one object with no parent");
+        }
+
+        root->mNumChildren = static_cast<unsigned int>(no_parents.size());
+        root->mChildren = new aiNode *[root->mNumChildren]();
+        for (unsigned int i = 0; i < root->mNumChildren; ++i) {
+            root->mChildren[i] = ConvertNode(in, no_parents[i], conv, aiMatrix4x4());
+            root->mChildren[i]->mParent = root;
+        }
     }
 
     BuildMaterials(conv);
@@ -423,9 +423,9 @@ void BlenderImporter::ResolveImage(aiMaterial *out, const Material *mat, const M
             --s;
         }
 
-        curTex->achFormatHint[0] = s + 1 > e ? '\0' : (char)::tolower(s[1]);
-        curTex->achFormatHint[1] = s + 2 > e ? '\0' : (char)::tolower(s[2]);
-        curTex->achFormatHint[2] = s + 3 > e ? '\0' : (char)::tolower(s[3]);
+        curTex->achFormatHint[0] = s + 1 > e ? '\0' : (char)::tolower((unsigned char)s[1]);
+        curTex->achFormatHint[1] = s + 2 > e ? '\0' : (char)::tolower((unsigned char)s[2]);
+        curTex->achFormatHint[2] = s + 3 > e ? '\0' : (char)::tolower((unsigned char)s[3]);
         curTex->achFormatHint[3] = '\0';
 
         // tex->mHeight = 0;
@@ -437,7 +437,7 @@ void BlenderImporter::ResolveImage(aiMaterial *out, const Material *mat, const M
 
         curTex->pcData = reinterpret_cast<aiTexel *>(ch);
 
-        LogInfo("Reading embedded texture, original file was " + std::string(img->name));
+        LogInfo("Reading embedded texture, original file was ", img->name);
     } else {
         name = aiString(img->name);
     }
@@ -519,7 +519,7 @@ void BlenderImporter::ResolveTexture(aiMaterial *out, const Material *mat, const
     case Tex::Type_POINTDENSITY:
     case Tex::Type_VOXELDATA:
 
-        LogWarn(std::string("Encountered a texture with an unsupported type: ") + dispnam);
+        LogWarn("Encountered a texture with an unsupported type: ", dispnam);
         AddSentinelTexture(out, mat, tex, conv_data);
         break;
 
@@ -682,7 +682,7 @@ void BlenderImporter::BuildMaterials(ConversionData &conv_data) {
 
     BuildDefaultMaterial(conv_data);
 
-    for (std::shared_ptr<Material> mat : conv_data.materials_raw) {
+    for (const std::shared_ptr<Material> &mat : conv_data.materials_raw) {
 
         // reset per material global counters
         for (size_t i = 0; i < sizeof(conv_data.next_texture) / sizeof(conv_data.next_texture[0]); ++i) {
@@ -748,15 +748,14 @@ void BlenderImporter::BuildMaterials(ConversionData &conv_data) {
 void BlenderImporter::CheckActualType(const ElemBase *dt, const char *check) {
     ai_assert(dt);
     if (strcmp(dt->dna_type, check)) {
-        ThrowException((format(),
-                "Expected object at ", std::hex, dt, " to be of type `", check,
-                "`, but it claims to be a `", dt->dna_type, "`instead"));
+        ThrowException("Expected object at ", std::hex, dt, " to be of type `", check,
+                "`, but it claims to be a `", dt->dna_type, "`instead");
     }
 }
 
 // ------------------------------------------------------------------------------------------------
 void BlenderImporter::NotSupportedObjectType(const Object *obj, const char *type) {
-    LogWarn((format(), "Object `", obj->id.name, "` - type is unsupported: `", type, "`, skipping"));
+    LogWarn("Object `", obj->id.name, "` - type is unsupported: `", type, "`, skipping");
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -989,7 +988,7 @@ void BlenderImporter::ConvertMesh(const Scene & /*in*/, const Object * /*obj*/, 
     // key is material number, value is the TextureUVMapping for the material
     typedef std::map<uint32_t, TextureUVMapping> MaterialTextureUVMappings;
     MaterialTextureUVMappings matTexUvMappings;
-    const uint32_t maxMat = static_cast<const uint32_t>(mesh->mat.size());
+    const uint32_t maxMat = static_cast<uint32_t>(mesh->mat.size());
     for (uint32_t m = 0; m < maxMat; ++m) {
         // get material by index
         const std::shared_ptr<Material> pMat = mesh->mat[m];

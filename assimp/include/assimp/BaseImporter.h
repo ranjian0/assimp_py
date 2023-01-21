@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 All rights reserved.
 
@@ -51,10 +51,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "Exceptional.h"
 
-#include <assimp/ai_assert.h>
 #include <assimp/types.h>
 #include <assimp/ProgressHandler.hpp>
-#include <map>
 #include <set>
 #include <vector>
 #include <memory>
@@ -97,20 +95,15 @@ public:
     // -------------------------------------------------------------------
     /** Returns whether the class can handle the format of the given file.
      *
-     * The implementation should be as quick as possible. A check for
-     * the file extension is enough. If no suitable loader is found with
-     * this strategy, CanRead() is called again, the 'checkSig' parameter
-     * set to true this time. Now the implementation is expected to
-     * perform a full check of the file structure, possibly searching the
-     * first bytes of the file for magic identifiers or keywords.
+     * The implementation is expected to perform a full check of the file
+     * structure, possibly searching the first bytes of the file for magic
+     * identifiers or keywords.
      *
      * @param pFile Path and file name of the file to be examined.
      * @param pIOHandler The IO handler to use for accessing any file.
-     * @param checkSig Set to true if this method is called a second time.
-     *   This time, the implementation may take more time to examine the
-     *   contents of the file to be loaded for magic bytes, keywords, etc
-     *   to be able to load files with unknown/not existent file extensions.
-     * @return true if the class can read this file, false if not.
+     * @param checkSig Legacy; do not use.
+     * @return true if the class can read this file, false if not or if
+     * unsure.
      */
     virtual bool CanRead(
             const std::string &pFile,
@@ -143,11 +136,23 @@ public:
 
     // -------------------------------------------------------------------
     /** Returns the error description of the last error that occurred.
+     * If the error is due to a std::exception, this will return the message.
+     * Exceptions can also be accessed with GetException().
      * @return A description of the last error that occurred. An empty
      * string if there was no error.
      */
     const std::string &GetErrorText() const {
         return m_ErrorText;
+    }
+
+    // -------------------------------------------------------------------
+    /** Returns the exception of the last exception that occurred.
+     * Note: Exceptions are not the only source of error details, so GetErrorText
+     * should be consulted too.
+     * @return The last exception that occurred.
+     */
+    const std::exception_ptr& GetException() const {
+        return m_Exception;
     }
 
     // -------------------------------------------------------------------
@@ -167,40 +172,8 @@ public:
     /**
      * Will be called only by scale process when scaling is requested.
      */
-    virtual void SetFileScale(double scale) {
+    void SetFileScale(double scale) {
         fileScale = scale;
-    }
-
-    virtual double GetFileScale() const {
-        return fileScale;
-    }
-
-    enum ImporterUnits {
-        M,
-        MM,
-        CM,
-        INCHES,
-        FEET
-    };
-
-    /**
-     * Assimp Importer
-     * unit conversions available 
-     * NOTE: Valid options are initialised in the
-     * constructor in the implementation file to
-     * work around a VS2013 compiler bug if support
-     * for that compiler is dropped in the future
-     * initialisation can be moved back here
-     * */
-    std::map<ImporterUnits, double> importerUnits;
-
-    virtual void SetApplicationUnits(const ImporterUnits &unit) {
-        importerScale = importerUnits[unit];
-        applicationUnits = unit;
-    }
-
-    virtual const ImporterUnits &GetApplicationUnits() {
-        return applicationUnits;
     }
 
     // -------------------------------------------------------------------
@@ -211,7 +184,6 @@ public:
     void GetExtensionList(std::set<std::string> &extensions);
 
 protected:
-    ImporterUnits applicationUnits = ImporterUnits::M;
     double importerScale = 1.0;
     double fileScale = 1.0;
 
@@ -283,7 +255,7 @@ public: // static utilities
             IOSystem *pIOSystem,
             const std::string &file,
             const char **tokens,
-            unsigned int numTokens,
+            std::size_t numTokens,
             unsigned int searchBytes = 200,
             bool tokensSol = false,
             bool noAlphaBeforeTokens = false);
@@ -328,7 +300,7 @@ public: // static utilities
             IOSystem *pIOHandler,
             const std::string &pFile,
             const void *magic,
-            unsigned int num,
+            std::size_t num,
             unsigned int offset = 0,
             unsigned int size = 4);
 
@@ -408,11 +380,13 @@ public: // static utilities
 
 private:
     /* Pushes state into importer for the importer scale */
-    virtual void UpdateImporterScale(Importer *pImp);
+    void UpdateImporterScale(Importer *pImp);
 
-    protected:
+protected:
     /// Error description in case there was one.
     std::string m_ErrorText;
+    /// The exception, in case there was one.
+    std::exception_ptr m_Exception;
     /// Currently set progress handler.
     ProgressHandler *m_progress;
 };

@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 All rights reserved.
 
@@ -116,7 +116,7 @@ inline const char *TAcCheckedLoadFloatArray(const char *buffer, const char *name
     buffer = AcSkipToNextToken(buffer);
     if (0 != name_length) {
         if (0 != strncmp(buffer, name, name_length) || !IsSpace(buffer[name_length])) {
-            ASSIMP_LOG_ERROR("AC3D: Unexpexted token. " + std::string(name) + " was expected.");
+            ASSIMP_LOG_ERROR("AC3D: Unexpected token. ", name, " was expected.");
             return buffer;
         }
         buffer += name_length + 1;
@@ -146,24 +146,13 @@ AC3DImporter::AC3DImporter() :
 
 // ------------------------------------------------------------------------------------------------
 // Destructor, private as well
-AC3DImporter::~AC3DImporter() {
-    // nothing to be done here
-}
+AC3DImporter::~AC3DImporter() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Returns whether the class can handle the format of the given file.
-bool AC3DImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, bool checkSig) const {
-    std::string extension = GetExtension(pFile);
-
-    // fixme: are acc and ac3d *really* used? Some sources say they are
-    if (extension == "ac" || extension == "ac3d" || extension == "acc") {
-        return true;
-    }
-    if (!extension.length() || checkSig) {
-        uint32_t token = AI_MAKE_MAGIC("AC3D");
-        return CheckMagicToken(pIOHandler, pFile, &token, 1, 0);
-    }
-    return false;
+bool AC3DImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, bool /*checkSig*/) const {
+    static const uint32_t tokens[] = { AI_MAKE_MAGIC("AC3D") };
+    return CheckMagicToken(pIOHandler, pFile, tokens, AI_COUNT_OF(tokens));
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -189,7 +178,7 @@ void AC3DImporter::LoadObjectSection(std::vector<Object> &objects) {
 
     ++mNumMeshes;
 
-    objects.push_back(Object());
+    objects.emplace_back();
     Object &obj = objects.back();
 
     aiLight *light = nullptr;
@@ -276,7 +265,7 @@ void AC3DImporter::LoadObjectSection(std::vector<Object> &objects) {
                     --buffer; // make sure the line is processed a second time
                     break;
                 }
-                obj.vertices.push_back(aiVector3D());
+                obj.vertices.emplace_back();
                 aiVector3D &v = obj.vertices.back();
                 buffer = TAcCheckedLoadFloatArray(buffer, "", 0, 3, &v.x);
             }
@@ -302,11 +291,11 @@ void AC3DImporter::LoadObjectSection(std::vector<Object> &objects) {
                     Q3DWorkAround = true;
                 }
                 SkipSpaces(&buffer);
-                obj.surfaces.push_back(Surface());
+                obj.surfaces.emplace_back();
                 Surface &surf = obj.surfaces.back();
                 surf.flags = strtoul_cppstyle(buffer);
 
-                while (1) {
+                while (true) {
                     if (!GetNextLine()) {
                         throw DeadlyImportError("AC3D: Unexpected EOF: surface is incomplete");
                     }
@@ -333,7 +322,7 @@ void AC3DImporter::LoadObjectSection(std::vector<Object> &objects) {
                                 ASSIMP_LOG_ERROR("AC3D: Unexpected EOF: surface references are incomplete");
                                 break;
                             }
-                            surf.entries.push_back(Surface::SurfaceEntry());
+                            surf.entries.emplace_back();
                             Surface::SurfaceEntry &entry = surf.entries.back();
 
                             entry.first = strtoul10(buffer, &buffer);
@@ -492,7 +481,7 @@ aiNode *AC3DImporter::ConvertObjectSection(Object &object,
 
                 default:
                     // Coerce unknowns to a polygon and warn
-                    ASSIMP_LOG_WARN_F("AC3D: The type flag of a surface is unknown: ", (*it).flags);
+                    ASSIMP_LOG_WARN("AC3D: The type flag of a surface is unknown: ", (*it).flags);
                     (*it).flags &= ~(Surface::Mask);
                     // fallthrough
 
@@ -690,7 +679,7 @@ aiNode *AC3DImporter::ConvertObjectSection(Object &object,
             if (object.subDiv) {
                 if (configEvalSubdivision) {
                     std::unique_ptr<Subdivider> div(Subdivider::Create(Subdivider::CATMULL_CLARKE));
-                    ASSIMP_LOG_INFO("AC3D: Evaluating subdivision surface: " + object.name);
+                    ASSIMP_LOG_INFO("AC3D: Evaluating subdivision surface: ", object.name);
 
                     std::vector<aiMesh *> cpy(meshes.size() - oldm, nullptr);
                     div->Subdivide(&meshes[oldm], cpy.size(), &cpy.front(), object.subDiv, true);
@@ -698,7 +687,7 @@ aiNode *AC3DImporter::ConvertObjectSection(Object &object,
 
                     // previous meshes are deleted vy Subdivide().
                 } else {
-                    ASSIMP_LOG_INFO("AC3D: Letting the subdivision surface untouched due to my configuration: " + object.name);
+                    ASSIMP_LOG_INFO("AC3D: Letting the subdivision surface untouched due to my configuration: ", object.name);
                 }
             }
         }
@@ -761,8 +750,8 @@ void AC3DImporter::InternReadFile(const std::string &pFile,
     std::unique_ptr<IOStream> file(pIOHandler->Open(pFile, "rb"));
 
     // Check whether we can read from the file
-    if (file.get() == nullptr) {
-        throw DeadlyImportError("Failed to open AC3D file " + pFile + ".");
+    if (file == nullptr) {
+        throw DeadlyImportError("Failed to open AC3D file ", pFile, ".");
     }
 
     // allocate storage and copy the contents of the file to a memory buffer
@@ -782,7 +771,7 @@ void AC3DImporter::InternReadFile(const std::string &pFile,
     unsigned int version = HexDigitToDecimal(buffer[4]);
     char msg[3];
     ASSIMP_itoa10(msg, 3, version);
-    ASSIMP_LOG_INFO_F("AC3D file format version: ", msg);
+    ASSIMP_LOG_INFO("AC3D file format version: ", msg);
 
     std::vector<Material> materials;
     materials.reserve(5);
@@ -795,7 +784,7 @@ void AC3DImporter::InternReadFile(const std::string &pFile,
 
     while (GetNextLine()) {
         if (TokenMatch(buffer, "MATERIAL", 8)) {
-            materials.push_back(Material());
+            materials.emplace_back();
             Material &mat = materials.back();
 
             // manually parse the material ... sscanf would use the buldin atof ...
@@ -822,7 +811,7 @@ void AC3DImporter::InternReadFile(const std::string &pFile,
     }
     if (materials.empty()) {
         ASSIMP_LOG_WARN("AC3D: No material has been found");
-        materials.push_back(Material());
+        materials.emplace_back();
     }
 
     mNumMeshes += (mNumMeshes >> 2u) + 1;

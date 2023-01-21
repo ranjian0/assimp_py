@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 All rights reserved.
 
@@ -132,7 +132,7 @@ private:
     * \param[in,out] value The decompressed anim value at \p frame.
     */
     void extract_anim_value(const AnimValue_HL1 *panimvalue,
-            int frame, float bone_scale, float &value);
+            int frame, float bone_scale, ai_real &value);
 
     /**
      *  \brief Given the number of blend animations, determine the number of blend controllers.
@@ -218,12 +218,12 @@ private:
 template <typename MDLFileHeader>
 void HL1MDLLoader::load_file_into_buffer(const std::string &file_path, unsigned char *&buffer) {
     if (!io_->Exists(file_path))
-        throw DeadlyImportError("Missing file " + DefaultIOSystem::fileName(file_path) + ".");
+        throw DeadlyImportError("Missing file ", DefaultIOSystem::fileName(file_path), ".");
 
     std::unique_ptr<IOStream> file(io_->Open(file_path));
 
-    if (file.get() == nullptr) {
-        throw DeadlyImportError("Failed to open MDL file " + DefaultIOSystem::fileName(file_path) + ".");
+    if (file == nullptr) {
+        throw DeadlyImportError("Failed to open MDL file ", DefaultIOSystem::fileName(file_path), ".");
     }
 
     const size_t file_size = file->FileSize();

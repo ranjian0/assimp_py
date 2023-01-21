@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 All rights reserved.
 
@@ -47,6 +47,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // internal headers
 #include "Q3DLoader.h"
+#include <assimp/StringUtils.h>
 #include <assimp/StreamReader.h>
 #include <assimp/fast_atof.h>
 #include <assimp/importerdesc.h>
@@ -71,30 +72,17 @@ static const aiImporterDesc desc = {
 
 // ------------------------------------------------------------------------------------------------
 // Constructor to be privately used by Importer
-Q3DImporter::Q3DImporter() {
-    // empty
-}
+Q3DImporter::Q3DImporter() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Destructor, private as well
-Q3DImporter::~Q3DImporter() {
-    // empty
-}
+Q3DImporter::~Q3DImporter() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Returns whether the class can handle the format of the given file.
-bool Q3DImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, bool checkSig) const {
-    const std::string extension = GetExtension(pFile);
-
-    if (extension == "q3s" || extension == "q3o")
-        return true;
-    else if (!extension.length() || checkSig) {
-        if (!pIOHandler)
-            return true;
-        const char *tokens[] = { "quick3Do", "quick3Ds" };
-        return SearchFileHeaderForToken(pIOHandler, pFile, tokens, 2);
-    }
-    return false;
+bool Q3DImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, bool /*checkSig*/) const {
+    static const char *tokens[] = { "quick3Do", "quick3Ds" };
+    return SearchFileHeaderForToken(pIOHandler, pFile, tokens, AI_COUNT_OF(tokens));
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -106,21 +94,25 @@ const aiImporterDesc *Q3DImporter::GetInfo() const {
 // Imports the given file into the given scene structure.
 void Q3DImporter::InternReadFile(const std::string &pFile,
         aiScene *pScene, IOSystem *pIOHandler) {
-    StreamReaderLE stream(pIOHandler->Open(pFile, "rb"));
+
+    auto file = pIOHandler->Open(pFile, "rb");
+    if (!file)
+        throw DeadlyImportError("Quick3D: Could not open ", pFile);
+
+    StreamReaderLE stream(file);
 
     // The header is 22 bytes large
     if (stream.GetRemainingSize() < 22)
-        throw DeadlyImportError("File is either empty or corrupt: " + pFile);
+        throw DeadlyImportError("File is either empty or corrupt: ", pFile);
 
     // Check the file's signature
     if (ASSIMP_strincmp((const char *)stream.GetPtr(), "quick3Do", 8) &&
             ASSIMP_strincmp((const char *)stream.GetPtr(), "quick3Ds", 8)) {
-        throw DeadlyImportError("Not a Quick3D file. Signature string is: " +
-                                std::string((const char *)stream.GetPtr(), 8));
+        throw DeadlyImportError("Not a Quick3D file. Signature string is: ", ai_str_toprintable((const char *)stream.GetPtr(), 8));
     }
 
     // Print the file format version
-    ASSIMP_LOG_INFO_F("Quick3D File format version: ",
+    ASSIMP_LOG_INFO("Quick3D File format version: ",
             std::string(&((const char *)stream.GetPtr())[8], 2));
 
     // ... an store it
@@ -133,10 +125,20 @@ void Q3DImporter::InternReadFile(const std::string &pFile,
     unsigned int numTextures = (unsigned int)stream.GetI4();
 
     std::vector<Material> materials;
-    materials.reserve(numMats);
+    try {
+        materials.reserve(numMats);
+    } catch(const std::bad_alloc&) {
+        ASSIMP_LOG_ERROR("Invalid alloc for materials.");
+        throw DeadlyImportError("Invalid Quick3D-file, material allocation failed.");
+    }
 
     std::vector<Mesh> meshes;
-    meshes.reserve(numMeshes);
+    try {
+        meshes.reserve(numMeshes);
+    } catch(const std::bad_alloc&) {
+        ASSIMP_LOG_ERROR("Invalid alloc for meshes.");
+        throw DeadlyImportError("Invalid Quick3D-file, mesh allocation failed.");
+    }
 
     // Allocate the scene root node
     pScene->mRootNode = new aiNode();
@@ -151,7 +153,7 @@ void Q3DImporter::InternReadFile(const std::string &pFile,
             // Meshes chunk
         case 'm': {
             for (unsigned int quak = 0; quak < numMeshes; ++quak) {
-                meshes.push_back(Mesh());
+                meshes.emplace_back();
                 Mesh &mesh = meshes.back();
 
                 // read all vertices
@@ -178,7 +180,7 @@ void Q3DImporter::InternReadFile(const std::string &pFile,
 
                 // number of indices
                 for (unsigned int i = 0; i < numVerts; ++i) {
-                    faces.push_back(Face(stream.GetI2()));
+                    faces.emplace_back(stream.GetI2());
                     if (faces.back().indices.empty())
                         throw DeadlyImportError("Quick3D: Found face with zero indices");
                 }
@@ -242,7 +244,7 @@ void Q3DImporter::InternReadFile(const std::string &pFile,
         case 'c':
 
             for (unsigned int i = 0; i < numMats; ++i) {
-                materials.push_back(Material());
+                materials.emplace_back();
                 Material &mat = materials.back();
 
                 // read the material name
@@ -396,7 +398,7 @@ outer:
     // If we have no materials loaded - generate a default mat
     if (materials.empty()) {
         ASSIMP_LOG_INFO("Quick3D: No material found, generating one");
-        materials.push_back(Material());
+        materials.emplace_back();
         materials.back().diffuse = fgColor;
     }
 
@@ -416,7 +418,7 @@ outer:
                 (*fit).mat = 0;
             }
             if (fidx[(*fit).mat].empty()) ++pScene->mNumMeshes;
-            fidx[(*fit).mat].push_back(FaceIdx(p, q));
+            fidx[(*fit).mat].emplace_back(p, q);
         }
     }
     pScene->mNumMaterials = pScene->mNumMeshes;

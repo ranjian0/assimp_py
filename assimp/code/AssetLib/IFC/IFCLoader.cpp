@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 
 All rights reserved.
@@ -48,6 +48,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <tuple>
 
 #ifndef ASSIMP_BUILD_NO_COMPRESSED_IFC
@@ -67,6 +68,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <assimp/importerdesc.h>
 #include <assimp/scene.h>
 #include <assimp/Importer.hpp>
+#include <utility>
 
 namespace Assimp {
 template <>
@@ -115,33 +117,25 @@ static const aiImporterDesc desc = {
     0,
     0,
     0,
-    "ifc ifczip stp"
+    "ifc ifczip step stp"
 };
 
 // ------------------------------------------------------------------------------------------------
 // Constructor to be privately used by Importer
-IFCImporter::IFCImporter() {}
+IFCImporter::IFCImporter() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Destructor, private as well
-IFCImporter::~IFCImporter() {
-}
+IFCImporter::~IFCImporter() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Returns whether the class can handle the format of the given file.
-bool IFCImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, bool checkSig) const {
-    const std::string &extension = GetExtension(pFile);
-    if (extension == "ifc" || extension == "ifczip") {
-        return true;
-    } else if ((!extension.length() || checkSig) && pIOHandler) {
-        // note: this is the common identification for STEP-encoded files, so
-        // it is only unambiguous as long as we don't support any further
-        // file formats with STEP as their encoding.
-        const char *tokens[] = { "ISO-10303-21" };
-        const bool found(SearchFileHeaderForToken(pIOHandler, pFile, tokens, 1));
-        return found;
-    }
-    return false;
+bool IFCImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, bool /*checkSig*/) const {
+    // note: this is the common identification for STEP-encoded files, so
+    // it is only unambiguous as long as we don't support any further
+    // file formats with STEP as their encoding.
+    static const char *tokens[] = { "ISO-10303-21" };
+    return SearchFileHeaderForToken(pIOHandler, pFile, tokens, AI_COUNT_OF(tokens));
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -193,7 +187,7 @@ void IFCImporter::InternReadFile(const std::string &pFile, aiScene *pScene, IOSy
                 // get file size, etc.
                 unz_file_info fileInfo;
                 char filename[256];
-                unzGetCurrentFileInfo(zip, &fileInfo, filename, sizeof(filename), 0, 0, 0, 0);
+                unzGetCurrentFileInfo(zip, &fileInfo, filename, sizeof(filename), nullptr, 0, nullptr, 0);
                 if (GetExtension(filename) != "ifc") {
                     continue;
                 }
@@ -218,7 +212,7 @@ void IFCImporter::InternReadFile(const std::string &pFile, aiScene *pScene, IOSy
                     ThrowException("Failed to decompress IFC ZIP file");
                 }
                 unzCloseCurrentFile(zip);
-                stream.reset(new MemoryIOStream(buff, fileInfo.uncompressed_size, true));
+                stream = std::make_shared<MemoryIOStream>(buff, fileInfo.uncompressed_size, true);
                 if (unzGoToNextFile(zip) == UNZ_END_OF_LIST_OF_FILE) {
                     ThrowException("Found no IFC file member in IFCZIP file (1)");
                 }
@@ -235,7 +229,7 @@ void IFCImporter::InternReadFile(const std::string &pFile, aiScene *pScene, IOSy
 #endif
     }
 
-    std::unique_ptr<STEP::DB> db(STEP::ReadFileHeader(stream));
+    std::unique_ptr<STEP::DB> db(STEP::ReadFileHeader(std::move(stream)));
     const STEP::HeaderInfo &head = static_cast<const STEP::DB &>(*db).GetHeader();
 
     if (!head.fileSchema.size() || head.fileSchema.substr(0, 3) != "IFC") {
@@ -243,12 +237,12 @@ void IFCImporter::InternReadFile(const std::string &pFile, aiScene *pScene, IOSy
     }
 
     if (!DefaultLogger::isNullLogger()) {
-        LogDebug("File schema is \'" + head.fileSchema + '\'');
+        LogDebug("File schema is \'", head.fileSchema, '\'');
         if (head.timestamp.length()) {
-            LogDebug("Timestamp \'" + head.timestamp + '\'');
+            LogDebug("Timestamp \'", head.timestamp, '\'');
         }
         if (head.app.length()) {
-            LogDebug("Application/Exporter identline is \'" + head.app + '\'');
+            LogDebug("Application/Exporter identline is \'", head.app, '\'');
         }
     }
 
@@ -315,7 +309,7 @@ void IFCImporter::InternReadFile(const std::string &pFile, aiScene *pScene, IOSy
 
     // this must be last because objects are evaluated lazily as we process them
     if (!DefaultLogger::isNullLogger()) {
-        LogDebug((Formatter::format(), "STEP: evaluated ", db->GetEvaluatedObjectCount(), " object records"));
+        LogDebug("STEP: evaluated ", db->GetEvaluatedObjectCount(), " object records");
     }
 }
 
@@ -403,7 +397,7 @@ void ResolveObjectPlacement(aiMatrix4x4 &m, const Schema_2x3::IfcObjectPlacement
             m = tmpM * m;
         }
     } else {
-        IFCImporter::LogWarn("skipping unknown IfcObjectPlacement entity, type is " + place.GetClassName());
+        IFCImporter::LogWarn("skipping unknown IfcObjectPlacement entity, type is ", place.GetClassName());
     }
 }
 
@@ -438,7 +432,7 @@ bool ProcessMappedItem(const Schema_2x3::IfcMappedItem &mapped, aiNode *nd_src, 
     bool got = false;
     for (const Schema_2x3::IfcRepresentationItem &item : repr.Items) {
         if (!ProcessRepresentationItem(item, localmatid, meshes, conv)) {
-            IFCImporter::LogWarn("skipping mapped entity of type " + item.GetClassName() + ", no representations could be generated");
+            IFCImporter::LogWarn("skipping mapped entity of type ", item.GetClassName(), ", no representations could be generated");
         } else
             got = true;
     }
@@ -567,7 +561,7 @@ typedef std::map<std::string, std::string> Metadata;
 
 // ------------------------------------------------------------------------------------------------
 void ProcessMetadata(const Schema_2x3::ListOf<Schema_2x3::Lazy<Schema_2x3::IfcProperty>, 1, 0> &set, ConversionData &conv, Metadata &properties,
-        const std::string &prefix = "",
+        const std::string &prefix = std::string(),
         unsigned int nest = 0) {
     for (const Schema_2x3::IfcProperty &property : set) {
         const std::string &key = prefix.length() > 0 ? (prefix + "." + property.Name) : property.Name;
@@ -618,7 +612,7 @@ void ProcessMetadata(const Schema_2x3::ListOf<Schema_2x3::Lazy<Schema_2x3::IfcPr
                 ProcessMetadata(complexProp->HasProperties, conv, properties, key, nest + 1);
             }
         } else {
-            properties[key] = "";
+            properties[key] = std::string();
         }
     }
 }
@@ -856,7 +850,7 @@ void ProcessSpatialStructures(ConversionData &conv) {
         if (!prod) {
             continue;
         }
-        IFCImporter::LogVerboseDebug("looking at spatial structure `" + (prod->Name ? prod->Name.Get() : "unnamed") + "`" + (prod->ObjectType ? " which is of type " + prod->ObjectType.Get() : ""));
+        IFCImporter::LogVerboseDebug("looking at spatial structure `", (prod->Name ? prod->Name.Get() : "unnamed"), "`", (prod->ObjectType ? " which is of type " + prod->ObjectType.Get() : ""));
 
         // the primary sites are referenced by an IFCRELAGGREGATES element which assigns them to the IFCPRODUCT
         const STEP::DB::RefMap &refs = conv.db.GetRefs();

@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 
 
@@ -58,7 +58,7 @@ RemoveVCProcess::RemoveVCProcess() :
 
 // ------------------------------------------------------------------------------------------------
 // Destructor, private as well
-RemoveVCProcess::~RemoveVCProcess() {}
+RemoveVCProcess::~RemoveVCProcess() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Returns whether the processing step is present in the given flag field.
@@ -67,7 +67,7 @@ bool RemoveVCProcess::IsActive(unsigned int pFlags) const {
 }
 
 // ------------------------------------------------------------------------------------------------
-// Small helper function to delete all elements in a T** aray using delete
+// Small helper function to delete all elements in a T** array using delete
 template <typename T>
 inline void ArrayDelete(T **&in, unsigned int &num) {
     for (unsigned int i = 0; i < num; ++i)

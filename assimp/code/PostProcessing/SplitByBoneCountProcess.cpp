@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 
 All rights reserved.
@@ -67,10 +67,7 @@ SplitByBoneCountProcess::SplitByBoneCountProcess()
 
 // ------------------------------------------------------------------------------------------------
 // Destructor
-SplitByBoneCountProcess::~SplitByBoneCountProcess()
-{
-    // nothing to do here
-}
+SplitByBoneCountProcess::~SplitByBoneCountProcess() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Returns whether the processing step is present in the given flag.
@@ -103,7 +100,7 @@ void SplitByBoneCountProcess::Execute( aiScene* pScene)
 
     if( !isNecessary )
     {
-        ASSIMP_LOG_DEBUG( format() << "SplitByBoneCountProcess early-out: no meshes with more than " << mMaxBoneCount << " bones." );
+        ASSIMP_LOG_DEBUG("SplitByBoneCountProcess early-out: no meshes with more than ", mMaxBoneCount, " bones." );
         return;
     }
 
@@ -151,7 +148,7 @@ void SplitByBoneCountProcess::Execute( aiScene* pScene)
     // recurse through all nodes and translate the node's mesh indices to fit the new mesh array
     UpdateNode( pScene->mRootNode);
 
-    ASSIMP_LOG_DEBUG( format() << "SplitByBoneCountProcess end: split " << mSubMeshIndices.size() << " meshes into " << meshes.size() << " submeshes." );
+    ASSIMP_LOG_DEBUG( "SplitByBoneCountProcess end: split ", mSubMeshIndices.size(), " meshes into ", meshes.size(), " submeshes." );
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -176,7 +173,7 @@ void SplitByBoneCountProcess::SplitMesh( const aiMesh* pMesh, std::vector<aiMesh
           if (bone->mWeights[b].mWeight > 0.0f)
           {
             int vertexId = bone->mWeights[b].mVertexId;
-            vertexBones[vertexId].push_back( BoneWeight( a, bone->mWeights[b].mWeight));
+            vertexBones[vertexId].emplace_back(a, bone->mWeights[b].mWeight);
             if (vertexBones[vertexId].size() > mMaxBoneCount)
             {
               throw DeadlyImportError("SplitByBoneCountProcess: Single face requires more bones than specified max bone count!");
@@ -209,7 +206,7 @@ void SplitByBoneCountProcess::SplitMesh( const aiMesh* pMesh, std::vector<aiMesh
             // a small local set of new bones for the current face. State of all used bones for that face
             // can only be updated AFTER the face is completely analysed. Thanks to imre for the fix.
             std::set<unsigned int> newBonesAtCurrentFace;
-          
+
             const aiFace& face = pMesh->mFaces[a];
             // check every vertex if its bones would still fit into the current submesh
             for( unsigned int b = 0; b < face.mNumIndices; ++b )
@@ -221,7 +218,7 @@ void SplitByBoneCountProcess::SplitMesh( const aiMesh* pMesh, std::vector<aiMesh
                 if( !isBoneUsed[boneIndex] )
                 {
                   newBonesAtCurrentFace.insert(boneIndex);
-                }   
+                }
               }
             }
 
@@ -405,6 +402,45 @@ void SplitByBoneCountProcess::SplitMesh( const aiMesh* pMesh, std::vector<aiMesh
 
                 dstWeight->mVertexId = a;
                 dstWeight->mWeight = bonesOnThisVertex[b].second;
+            }
+        }
+
+        // ... and copy all the morph targets for all the vertices which made it into the new submesh
+        if (pMesh->mNumAnimMeshes > 0) {
+            newMesh->mNumAnimMeshes = pMesh->mNumAnimMeshes;
+            newMesh->mAnimMeshes = new aiAnimMesh*[newMesh->mNumAnimMeshes];
+
+            for (unsigned int morphIdx = 0; morphIdx < newMesh->mNumAnimMeshes; ++morphIdx) {
+                aiAnimMesh* origTarget = pMesh->mAnimMeshes[morphIdx];
+                aiAnimMesh* newTarget = new aiAnimMesh;
+                newTarget->mName = origTarget->mName;
+                newTarget->mWeight = origTarget->mWeight;
+                newTarget->mNumVertices = numSubMeshVertices;
+                newTarget->mVertices = new aiVector3D[numSubMeshVertices];
+                newMesh->mAnimMeshes[morphIdx] = newTarget;
+
+                if (origTarget->HasNormals()) {
+                    newTarget->mNormals = new aiVector3D[numSubMeshVertices];
+                }
+
+                if (origTarget->HasTangentsAndBitangents()) {
+                    newTarget->mTangents = new aiVector3D[numSubMeshVertices];
+                    newTarget->mBitangents = new aiVector3D[numSubMeshVertices];
+                }
+
+                for( unsigned int vi = 0; vi < numSubMeshVertices; ++vi) {
+                    // find the source vertex for it in the source mesh
+                    unsigned int previousIndex = previousVertexIndices[vi];
+                    newTarget->mVertices[vi] = origTarget->mVertices[previousIndex];
+
+                    if (newTarget->HasNormals()) {
+                        newTarget->mNormals[vi] = origTarget->mNormals[previousIndex];
+                    }
+                    if (newTarget->HasTangentsAndBitangents()) {
+                        newTarget->mTangents[vi] = origTarget->mTangents[previousIndex];
+                        newTarget->mBitangents[vi] = origTarget->mBitangents[previousIndex];
+                    }
+                }
             }
         }
 

@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 All rights reserved.
 
@@ -58,16 +58,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <assimp/mesh.h>
 
 // Header files, standard library.
-#include <memory> // shared_ptr
-#include <string>
-#include <sstream> // stringstream
+#include <array>
 #include <ctime> // localtime, tm_*
 #include <map>
-#include <set>
-#include <vector>
-#include <array>
-#include <unordered_set>
+#include <memory> // shared_ptr
 #include <numeric>
+#include <set>
+#include <sstream> // stringstream
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 // RESOURCES:
 // https://code.blender.org/2013/08/fbx-binary-file-format-specification/
@@ -255,7 +256,7 @@ void FBXExporter::WriteBinaryHeader()
 
 void FBXExporter::WriteBinaryFooter()
 {
-    outfile->Write(NULL_RECORD.c_str(), NULL_RECORD.size(), 1);
+    outfile->Write(NULL_RECORD, NumNullRecords, 1);
 
     outfile->Write(GENERIC_FOOTID.c_str(), GENERIC_FOOTID.size(), 1);
 
@@ -390,7 +391,7 @@ void FBXExporter::WriteHeaderExtension ()
         raw[i] = uint8_t(GENERIC_FILEID[i]);
     }
     FBX::Node::WritePropertyNode(
-        "FileId", raw, outstream, binary, indent
+        "FileId", std::move(raw), outstream, binary, indent
     );
     FBX::Node::WritePropertyNode(
         "CreationTime", GENERIC_CTIME, outstream, binary, indent
@@ -498,7 +499,7 @@ void FBXExporter::WriteDocuments ()
     if (!binary) {
         WriteAsciiSectionHeader("Documents Description");
     }
-    
+
     // not sure what the use of multiple documents would be,
     // or whether any end-application supports it
     FBX::Node docs("Documents");
@@ -541,10 +542,17 @@ void FBXExporter::WriteReferences ()
 // (before any actual data is written)
 // ---------------------------------------------------------------
 
-size_t count_nodes(const aiNode* n) {
-    size_t count = 1;
+size_t count_nodes(const aiNode* n, const aiNode* root) {
+    size_t count;
+    if (n == root) {
+        count = n->mNumMeshes; // (not counting root node)
+    } else if (n->mNumMeshes > 1) {
+        count = n->mNumMeshes + 1;
+    } else {
+        count = 1;
+    }
     for (size_t i = 0; i < n->mNumChildren; ++i) {
-        count += count_nodes(n->mChildren[i]);
+        count += count_nodes(n->mChildren[i], root);
     }
     return count;
 }
@@ -673,9 +681,9 @@ void FBXExporter::WriteDefinitions ()
         pt = FBX::Node("PropertyTemplate", "FBXAnimLayer");
         p = FBX::Node("Properties70");
         p.AddP70("Weight", "Number", "", "A", double(100));
-        p.AddP70bool("Mute", 0);
-        p.AddP70bool("Solo", 0);
-        p.AddP70bool("Lock", 0);
+        p.AddP70bool("Mute", false);
+        p.AddP70bool("Solo", false);
+        p.AddP70bool("Lock", false);
         p.AddP70color("Color", 0.8, 0.8, 0.8);
         p.AddP70("BlendMode", "enum", "", "", int32_t(0));
         p.AddP70("RotationAccumulationMode", "enum", "", "", int32_t(0));
@@ -714,7 +722,7 @@ void FBXExporter::WriteDefinitions ()
 
     // Model / FbxNode
     // <~~ node hierarchy
-    count = int32_t(count_nodes(mScene->mRootNode)) - 1; // (not counting root node)
+    count = int32_t(count_nodes(mScene->mRootNode, mScene->mRootNode));
     if (count) {
         n = FBX::Node("ObjectType", "Model");
         n.AddChild("Count", count);
@@ -725,42 +733,42 @@ void FBXExporter::WriteDefinitions ()
         p.AddP70vector("RotationPivot", 0.0, 0.0, 0.0);
         p.AddP70vector("ScalingOffset", 0.0, 0.0, 0.0);
         p.AddP70vector("ScalingPivot", 0.0, 0.0, 0.0);
-        p.AddP70bool("TranslationActive", 0);
+        p.AddP70bool("TranslationActive", false);
         p.AddP70vector("TranslationMin", 0.0, 0.0, 0.0);
         p.AddP70vector("TranslationMax", 0.0, 0.0, 0.0);
-        p.AddP70bool("TranslationMinX", 0);
-        p.AddP70bool("TranslationMinY", 0);
-        p.AddP70bool("TranslationMinZ", 0);
-        p.AddP70bool("TranslationMaxX", 0);
-        p.AddP70bool("TranslationMaxY", 0);
-        p.AddP70bool("TranslationMaxZ", 0);
+        p.AddP70bool("TranslationMinX", false);
+        p.AddP70bool("TranslationMinY", false);
+        p.AddP70bool("TranslationMinZ", false);
+        p.AddP70bool("TranslationMaxX", false);
+        p.AddP70bool("TranslationMaxY", false);
+        p.AddP70bool("TranslationMaxZ", false);
         p.AddP70enum("RotationOrder", 0);
-        p.AddP70bool("RotationSpaceForLimitOnly", 0);
+        p.AddP70bool("RotationSpaceForLimitOnly", false);
         p.AddP70double("RotationStiffnessX", 0.0);
         p.AddP70double("RotationStiffnessY", 0.0);
         p.AddP70double("RotationStiffnessZ", 0.0);
         p.AddP70double("AxisLen", 10.0);
         p.AddP70vector("PreRotation", 0.0, 0.0, 0.0);
         p.AddP70vector("PostRotation", 0.0, 0.0, 0.0);
-        p.AddP70bool("RotationActive", 0);
+        p.AddP70bool("RotationActive", false);
         p.AddP70vector("RotationMin", 0.0, 0.0, 0.0);
         p.AddP70vector("RotationMax", 0.0, 0.0, 0.0);
-        p.AddP70bool("RotationMinX", 0);
-        p.AddP70bool("RotationMinY", 0);
-        p.AddP70bool("RotationMinZ", 0);
-        p.AddP70bool("RotationMaxX", 0);
-        p.AddP70bool("RotationMaxY", 0);
-        p.AddP70bool("RotationMaxZ", 0);
+        p.AddP70bool("RotationMinX", false);
+        p.AddP70bool("RotationMinY", false);
+        p.AddP70bool("RotationMinZ", false);
+        p.AddP70bool("RotationMaxX", false);
+        p.AddP70bool("RotationMaxY", false);
+        p.AddP70bool("RotationMaxZ", false);
         p.AddP70enum("InheritType", 0);
-        p.AddP70bool("ScalingActive", 0);
+        p.AddP70bool("ScalingActive", false);
         p.AddP70vector("ScalingMin", 0.0, 0.0, 0.0);
         p.AddP70vector("ScalingMax", 1.0, 1.0, 1.0);
-        p.AddP70bool("ScalingMinX", 0);
-        p.AddP70bool("ScalingMinY", 0);
-        p.AddP70bool("ScalingMinZ", 0);
-        p.AddP70bool("ScalingMaxX", 0);
-        p.AddP70bool("ScalingMaxY", 0);
-        p.AddP70bool("ScalingMaxZ", 0);
+        p.AddP70bool("ScalingMinX", false);
+        p.AddP70bool("ScalingMinY", false);
+        p.AddP70bool("ScalingMinZ", false);
+        p.AddP70bool("ScalingMaxX", false);
+        p.AddP70bool("ScalingMaxY", false);
+        p.AddP70bool("ScalingMaxZ", false);
         p.AddP70vector("GeometricTranslation", 0.0, 0.0, 0.0);
         p.AddP70vector("GeometricRotation", 0.0, 0.0, 0.0);
         p.AddP70vector("GeometricScaling", 1.0, 1.0, 1.0);
@@ -781,11 +789,11 @@ void FBXExporter::WriteDefinitions ()
         p.AddP70double("PreferedAngleZ", 0.0);
         p.AddP70("LookAtProperty", "object", "", "");
         p.AddP70("UpVectorProperty", "object", "", "");
-        p.AddP70bool("Show", 1);
-        p.AddP70bool("NegativePercentShapeSupport", 1);
+        p.AddP70bool("Show", true);
+        p.AddP70bool("NegativePercentShapeSupport", true);
         p.AddP70int("DefaultAttributeIndex", -1);
-        p.AddP70bool("Freeze", 0);
-        p.AddP70bool("LODBox", 0);
+        p.AddP70bool("Freeze", false);
+        p.AddP70bool("LODBox", false);
         p.AddP70(
             "Lcl Translation", "Lcl Translation", "", "A",
             double(0), double(0), double(0)
@@ -812,6 +820,18 @@ void FBXExporter::WriteDefinitions ()
     // Geometry / FbxMesh
     // <~~ aiMesh
     count = mScene->mNumMeshes;
+
+    // Blendshapes are considered Geometry
+    int32_t bsDeformerCount=0;
+    for (size_t mi = 0; mi < mScene->mNumMeshes; ++mi) {
+        aiMesh* m = mScene->mMeshes[mi];
+        if (m->mNumAnimMeshes > 0) {
+          count+=m->mNumAnimMeshes;
+          bsDeformerCount+=m->mNumAnimMeshes; // One deformer per blendshape
+          bsDeformerCount++;                  // Plus one master blendshape deformer
+        }
+    }
+
     if (count) {
         n = FBX::Node("ObjectType", "Geometry");
         n.AddChild("Count", count);
@@ -820,9 +840,9 @@ void FBXExporter::WriteDefinitions ()
         p.AddP70color("Color", 0, 0, 0);
         p.AddP70vector("BBoxMin", 0, 0, 0);
         p.AddP70vector("BBoxMax", 0, 0, 0);
-        p.AddP70bool("Primary Visibility", 1);
-        p.AddP70bool("Casts Shadows", 1);
-        p.AddP70bool("Receive Shadows", 1);
+        p.AddP70bool("Primary Visibility", true);
+        p.AddP70bool("Casts Shadows", true);
+        p.AddP70bool("Receive Shadows", true);
         pt.AddChild(p);
         n.AddChild(pt);
         object_nodes.push_back(n);
@@ -853,7 +873,7 @@ void FBXExporter::WriteDefinitions ()
         } else {
             p.AddP70string("ShadingModel", "Lambert");
         }
-        p.AddP70bool("MultiLayer", 0);
+        p.AddP70bool("MultiLayer", false);
         p.AddP70colorA("EmissiveColor", 0.0, 0.0, 0.0);
         p.AddP70numberA("EmissiveFactor", 1.0);
         p.AddP70colorA("AmbientColor", 0.2, 0.2, 0.2);
@@ -890,7 +910,7 @@ void FBXExporter::WriteDefinitions ()
         n.AddChild("Count", count);
         pt = FBX::Node("PropertyTemplate", "FbxVideo");
         p = FBX::Node("Properties70");
-        p.AddP70bool("ImageSequence", 0);
+        p.AddP70bool("ImageSequence", false);
         p.AddP70int("ImageSequenceOffset", 0);
         p.AddP70double("FrameRate", 0.0);
         p.AddP70int("LastFrame", 0);
@@ -902,8 +922,8 @@ void FBXExporter::WriteDefinitions ()
         p.AddP70double("PlaySpeed", 0.0);
         p.AddP70time("Offset", 0);
         p.AddP70enum("InterlaceMode", 0);
-        p.AddP70bool("FreeRunning", 0);
-        p.AddP70bool("Loop", 0);
+        p.AddP70bool("FreeRunning", false);
+        p.AddP70bool("Loop", false);
         p.AddP70enum("AccessMode", 0);
         pt.AddChild(p);
         n.AddChild(pt);
@@ -924,8 +944,8 @@ void FBXExporter::WriteDefinitions ()
         p.AddP70enum("CurrentMappingType", 0);
         p.AddP70enum("WrapModeU", 0);
         p.AddP70enum("WrapModeV", 0);
-        p.AddP70bool("UVSwap", 0);
-        p.AddP70bool("PremultiplyAlpha", 1);
+        p.AddP70bool("UVSwap", false);
+        p.AddP70bool("PremultiplyAlpha", true);
         p.AddP70vectorA("Translation", 0.0, 0.0, 0.0);
         p.AddP70vectorA("Rotation", 0.0, 0.0, 0.0);
         p.AddP70vectorA("Scaling", 1.0, 1.0, 1.0);
@@ -933,8 +953,8 @@ void FBXExporter::WriteDefinitions ()
         p.AddP70vector("TextureScalingPivot", 0.0, 0.0, 0.0);
         p.AddP70enum("CurrentTextureBlendMode", 1);
         p.AddP70string("UVSet", "default");
-        p.AddP70bool("UseMaterial", 0);
-        p.AddP70bool("UseMipMap", 0);
+        p.AddP70bool("UseMaterial", false);
+        p.AddP70bool("UseMipMap", false);
         pt.AddChild(p);
         n.AddChild(pt);
         object_nodes.push_back(n);
@@ -978,7 +998,7 @@ void FBXExporter::WriteDefinitions ()
     }
 
     // Deformer
-    count = int32_t(count_deformers(mScene));
+    count = int32_t(count_deformers(mScene))+bsDeformerCount;
     if (count) {
         n = FBX::Node("ObjectType", "Deformer");
         n.AddChild("Count", count);
@@ -1209,7 +1229,7 @@ void FBXExporter::WriteObjects ()
                 "Version", int32_t(101), outstream, binary, indent
             );
             char layerName[8];
-            sprintf(layerName, "COLOR_%d", colorChannelIndex);
+            snprintf(layerName, sizeof(layerName), "COLOR_%d", colorChannelIndex);
             FBX::Node::WritePropertyNode(
                 "Name", (const char*)layerName, outstream, binary, indent
             );
@@ -1239,7 +1259,7 @@ void FBXExporter::WriteObjects ()
             indent = 2;
             vertexcolors.End(outstream, binary, indent, true);
         }
-        
+
         // uvs, if any
         for (size_t uvi = 0; uvi < m->GetNumUVChannels(); ++uvi) {
             if (m->mNumUVComponents[uvi] > 2) {
@@ -1362,6 +1382,7 @@ void FBXExporter::WriteObjects ()
         indent = 1;
         n.End(outstream, binary, indent, true);
     }
+
 
     // aiMaterial
     material_uids.clear();
@@ -1668,6 +1689,10 @@ void FBXExporter::WriteObjects ()
             // link the image data to the texture
             connections.emplace_back("C", "OO", image_uid, texture_uid);
 
+            aiUVTransform trafo;
+            unsigned int max = sizeof(aiUVTransform);
+            aiGetMaterialFloatArray(mat, AI_MATKEY_UVTRANSFORM(aiTextureType_DIFFUSE, 0), (ai_real *)&trafo, &max);
+
             // now write the actual texture node
             FBX::Node tnode("Texture");
             // TODO: some way to determine texture name?
@@ -1678,11 +1703,14 @@ void FBXExporter::WriteObjects ()
             tnode.AddChild("Version", int32_t(202));
             tnode.AddChild("TextureName", texture_name);
             FBX::Node p("Properties70");
+            p.AddP70vectorA("Translation", trafo.mTranslation[0], trafo.mTranslation[1], 0.0);
+            p.AddP70vectorA("Rotation", 0, 0, trafo.mRotation);
+            p.AddP70vectorA("Scaling", trafo.mScaling[0], trafo.mScaling[1], 0.0);
             p.AddP70enum("CurrentTextureBlendMode", 0); // TODO: verify
             //p.AddP70string("UVSet", ""); // TODO: how should this work?
-            p.AddP70bool("UseMaterial", 1);
+            p.AddP70bool("UseMaterial", true);
             tnode.AddChild(p);
-            // can't easily detrmine which texture path will be correct,
+            // can't easily determine which texture path will be correct,
             // so just store what we have in every field.
             // these being incorrect is a common problem with FBX anyway.
             tnode.AddChild("FileName", texture_path);
@@ -1695,6 +1723,100 @@ void FBXExporter::WriteObjects ()
             );
             tnode.Dump(outstream, binary, indent);
         }
+    }
+
+    // Blendshapes, if any
+    for (size_t mi = 0; mi < mScene->mNumMeshes; ++mi) {
+      const aiMesh* m = mScene->mMeshes[mi];
+      if (m->mNumAnimMeshes == 0) {
+        continue;
+      }
+      // make a deformer for this mesh
+      int64_t deformer_uid = generate_uid();
+      FBX::Node dnode("Deformer");
+      dnode.AddProperties(deformer_uid, m->mName.data + FBX::SEPARATOR + "Blendshapes", "BlendShape");
+      dnode.AddChild("Version", int32_t(101));
+      dnode.Dump(outstream, binary, indent);
+      // connect it
+      connections.emplace_back("C", "OO", deformer_uid, mesh_uids[mi]);
+      std::vector<int32_t> vertex_indices = vVertexIndice[mi];
+
+      for (unsigned int am = 0; am < m->mNumAnimMeshes; ++am) {
+        aiAnimMesh *pAnimMesh = m->mAnimMeshes[am];
+        std::string blendshape_name = pAnimMesh->mName.data;
+
+        // start the node record
+        FBX::Node bsnode("Geometry");
+        int64_t blendshape_uid = generate_uid();
+        mesh_uids.push_back(blendshape_uid);
+        bsnode.AddProperty(blendshape_uid);
+        bsnode.AddProperty(blendshape_name + FBX::SEPARATOR + "Blendshape");
+        bsnode.AddProperty("Shape");
+        bsnode.AddChild("Version", int32_t(100));
+        bsnode.Begin(outstream, binary, indent);
+        bsnode.DumpProperties(outstream, binary, indent);
+        bsnode.EndProperties(outstream, binary, indent);
+        bsnode.BeginChildren(outstream, binary, indent);
+        indent++;
+        if (pAnimMesh->HasPositions()) {
+          std::vector<int32_t>shape_indices;
+          std::vector<double>pPositionDiff;
+          std::vector<double>pNormalDiff;
+
+          for (unsigned int vt = 0; vt < vertex_indices.size(); ++vt) {
+              aiVector3D pDiff = (pAnimMesh->mVertices[vertex_indices[vt]] - m->mVertices[vertex_indices[vt]]);
+              if(pDiff.Length()>1e-8){
+                shape_indices.push_back(vertex_indices[vt]);
+                pPositionDiff.push_back(pDiff[0]);
+                pPositionDiff.push_back(pDiff[1]);
+                pPositionDiff.push_back(pDiff[2]);
+
+                if (pAnimMesh->HasNormals()) {
+                    aiVector3D nDiff = (pAnimMesh->mNormals[vertex_indices[vt]] - m->mNormals[vertex_indices[vt]]);
+                    pNormalDiff.push_back(nDiff[0]);
+                    pNormalDiff.push_back(nDiff[1]);
+                    pNormalDiff.push_back(nDiff[2]);
+                }
+              }
+          }
+
+          FBX::Node::WritePropertyNode(
+              "Indexes", shape_indices, outstream, binary, indent
+          );
+
+          FBX::Node::WritePropertyNode(
+              "Vertices", pPositionDiff, outstream, binary, indent
+          );
+
+          if (pNormalDiff.size()>0) {
+            FBX::Node::WritePropertyNode(
+                "Normals", pNormalDiff, outstream, binary, indent
+            );
+          }
+        }
+        indent--;
+        bsnode.End(outstream, binary, indent, true);
+
+        // Add blendshape Channel Deformer
+        FBX::Node sdnode("Deformer");
+        const int64_t blendchannel_uid = generate_uid();
+        sdnode.AddProperties(
+            blendchannel_uid, blendshape_name + FBX::SEPARATOR + "SubDeformer", "BlendShapeChannel"
+        );
+        sdnode.AddChild("Version", int32_t(100));
+        sdnode.AddChild("DeformPercent", float(0.0));
+        FBX::Node p("Properties70");
+        p.AddP70numberA("DeformPercent", 0.0);
+        sdnode.AddChild(p);
+        // TODO: Normally just one weight per channel, adding stub for later development
+        std::vector<float>fFullWeights;
+        fFullWeights.push_back(100.);
+        sdnode.AddChild("FullWeights", fFullWeights);
+        sdnode.Dump(outstream, binary, indent);
+
+        connections.emplace_back("C", "OO", blendchannel_uid, deformer_uid);
+        connections.emplace_back("C", "OO", blendshape_uid, blendchannel_uid);
+      }
     }
 
     // bones.
@@ -1756,7 +1878,7 @@ void FBXExporter::WriteObjects ()
     // at the same time we can build a list of all the skeleton nodes,
     // which will be used later to mark them as type "limbNode".
     std::unordered_set<const aiNode*> limbnodes;
-    
+
     //actual bone nodes in fbx, without parenting-up
     std::unordered_set<std::string> setAllBoneNamesInScene;
     for(unsigned int m = 0; m < mScene->mNumMeshes; ++ m)
@@ -1766,7 +1888,7 @@ void FBXExporter::WriteObjects ()
             setAllBoneNamesInScene.insert(pMesh->mBones[b]->mName.data);
     }
     aiMatrix4x4 mxTransIdentity;
-    
+
     // and a map of nodes by bone name, as finding them is annoying.
     std::map<std::string,aiNode*> node_by_bone;
     for (size_t mi = 0; mi < mScene->mNumMeshes; ++mi) {
@@ -1794,7 +1916,7 @@ void FBXExporter::WriteObjects ()
             // mark all parent nodes as skeleton as well,
             // up until we find the root node,
             // or else the node containing the mesh,
-            // or else the parent of a node containig the mesh.
+            // or else the parent of a node containing the mesh.
             for (
                 const aiNode* parent = n->mParent;
                 parent && parent != mScene->mRootNode;
@@ -1835,7 +1957,7 @@ void FBXExporter::WriteObjects ()
                     }
                     if (end) { break; }
                 }
-                
+
                 // if it was the skeleton root we can finish here
                 if (end) { break; }
             }
@@ -2089,7 +2211,65 @@ void FBXExporter::WriteObjects ()
         bpnode.Dump(outstream, binary, indent);
     }*/
 
-    // TODO: cameras, lights
+    // lights
+    indent = 1;
+    lights_uids.clear();
+    for (size_t li = 0; li < mScene->mNumLights; ++li) {
+        aiLight* l = mScene->mLights[li];
+
+        int64_t uid = generate_uid();
+        const std::string lightNodeAttributeName = l->mName.C_Str() + FBX::SEPARATOR + "NodeAttribute";
+
+        FBX::Node lna("NodeAttribute");
+        lna.AddProperties(uid, lightNodeAttributeName, "Light");
+        FBX::Node lnap("Properties70");
+
+        // Light color.
+        lnap.AddP70colorA("Color", l->mColorDiffuse.r, l->mColorDiffuse.g, l->mColorDiffuse.b);
+
+        // TODO Assimp light description is quite concise and do not handle light intensity.
+        // Default value to 1000W.
+        lnap.AddP70numberA("Intensity", 1000);
+
+        // FBXLight::EType conversion
+        switch (l->mType) {
+        case aiLightSource_POINT:
+            lnap.AddP70enum("LightType", 0);
+            break;
+        case aiLightSource_DIRECTIONAL:
+            lnap.AddP70enum("LightType", 1);
+            break;
+        case aiLightSource_SPOT:
+            lnap.AddP70enum("LightType", 2);
+            lnap.AddP70numberA("InnerAngle", AI_RAD_TO_DEG(l->mAngleInnerCone));
+            lnap.AddP70numberA("OuterAngle", AI_RAD_TO_DEG(l->mAngleOuterCone));
+            break;
+        // TODO Assimp do not handle 'area' nor 'volume' lights, but FBX does.
+        /*case aiLightSource_AREA:
+            lnap.AddP70enum("LightType", 3);
+            lnap.AddP70enum("AreaLightShape", 0); // 0=Rectangle, 1=Sphere
+            break;
+        case aiLightSource_VOLUME:
+            lnap.AddP70enum("LightType", 4);
+            break;*/
+        default:
+            break;
+        }
+
+        // Did not understood how to configure the decay so disabling attenuation.
+        lnap.AddP70enum("DecayType", 0);
+
+        // Dump to FBX stream
+        lna.AddChild(lnap);
+        lna.AddChild("TypeFlags", FBX::FBXExportProperty("Light"));
+        lna.AddChild("GeometryVersion", FBX::FBXExportProperty(int32_t(124)));
+        lna.Dump(outstream, binary, indent);
+
+        // Store name and uid (will be used later when parsing scene nodes)
+        lights_uids[l->mName.C_Str()] = uid;
+    }
+
+    // TODO: cameras
 
     // write nodes (i.e. model hierarchy)
     // start at root node
@@ -2318,10 +2498,10 @@ void FBXExporter::WriteModelNode(
     const aiVector3D one = {1, 1, 1};
     FBX::Node m("Model");
     std::string name = node->mName.C_Str() + FBX::SEPARATOR + "Model";
-    m.AddProperties(node_uid, name, type);
+    m.AddProperties(node_uid, std::move(name), type);
     m.AddChild("Version", int32_t(232));
     FBX::Node p("Properties70");
-    p.AddP70bool("RotationActive", 1);
+    p.AddP70bool("RotationActive", true);
     p.AddP70int("DefaultAttributeIndex", 0);
     p.AddP70enum("InheritType", inherit_type);
     if (transform_chain.empty()) {
@@ -2493,10 +2673,19 @@ void FBXExporter::WriteModelNodes(
         // and connect them
         connections.emplace_back("C", "OO", node_attribute_uid, node_uid);
     } else {
-        // generate a null node so we can add children to it
-        WriteModelNode(
-            outstream, binary, node, node_uid, "Null", transform_chain
-        );
+        const auto& lightIt = lights_uids.find(node->mName.C_Str());
+        if(lightIt != lights_uids.end()) {
+            // Node has a light connected to it.
+            WriteModelNode(
+                outstream, binary, node, node_uid, "Light", transform_chain
+            );
+            connections.emplace_back("C", "OO", lightIt->second, node_uid);
+        } else {
+            // generate a null node so we can add children to it
+            WriteModelNode(
+                outstream, binary, node, node_uid, "Null", transform_chain
+            );
+        }
     }
 
     // if more than one child mesh, make nodes for each mesh
@@ -2518,17 +2707,14 @@ void FBXExporter::WriteModelNodes(
                 ],
                 new_node_uid
             );
-            // write model node
-            FBX::Node m("Model");
+
+            aiNode new_node;
             // take name from mesh name, if it exists
-            std::string name = mScene->mMeshes[node->mMeshes[i]]->mName.C_Str();
-            name += FBX::SEPARATOR + "Model";
-            m.AddProperties(new_node_uid, name, "Mesh");
-            m.AddChild("Version", int32_t(232));
-            FBX::Node p("Properties70");
-            p.AddP70enum("InheritType", 1);
-            m.AddChild(p);
-            m.Dump(outstream, binary, 1);
+            new_node.mName = mScene->mMeshes[node->mMeshes[i]]->mName;
+            // write model node
+            WriteModelNode(
+                outstream, binary, &new_node, new_node_uid, "Mesh", std::vector<std::pair<std::string,aiVector3D>>()
+            );
         }
     }
 
@@ -2540,16 +2726,14 @@ void FBXExporter::WriteModelNodes(
     }
 }
 
-
 void FBXExporter::WriteAnimationCurveNode(
-    StreamWriterLE& outstream,
-    int64_t uid,
-    const std::string& name, // "T", "R", or "S"
-    aiVector3D default_value,
-    std::string property_name, // "Lcl Translation" etc
-    int64_t layer_uid,
-    int64_t node_uid
-) {
+        StreamWriterLE &outstream,
+        int64_t uid,
+        const std::string &name, // "T", "R", or "S"
+        aiVector3D default_value,
+        const std::string &property_name, // "Lcl Translation" etc
+        int64_t layer_uid,
+        int64_t node_uid) {
     FBX::Node n("AnimationCurveNode");
     n.AddProperties(uid, name + FBX::SEPARATOR + "AnimCurveNode", "");
     FBX::Node p("Properties70");
@@ -2563,7 +2747,6 @@ void FBXExporter::WriteAnimationCurveNode(
     // connect to bone
     this->connections.emplace_back("C", "OP", uid, node_uid, property_name);
 }
-
 
 void FBXExporter::WriteAnimationCurve(
     StreamWriterLE& outstream,

@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2020, assimp team
+Copyright (c) 2006-2022, assimp team
 
 All rights reserved.
 
@@ -81,19 +81,17 @@ static const aiImporterDesc desc = {
 
 //#define DEBUG_B3D
 
-template <typename T>
+template<typename T>
 void DeleteAllBarePointers(std::vector<T> &x) {
     for (auto p : x) {
         delete p;
     }
 }
 
-B3DImporter::~B3DImporter() {
-}
+B3DImporter::~B3DImporter() = default;
 
 // ------------------------------------------------------------------------------------------------
 bool B3DImporter::CanRead(const std::string &pFile, IOSystem * /*pIOHandler*/, bool /*checkSig*/) const {
-
     size_t pos = pFile.find_last_of('.');
     if (pos == string::npos) {
         return false;
@@ -118,8 +116,8 @@ void B3DImporter::InternReadFile(const std::string &pFile, aiScene *pScene, IOSy
     std::unique_ptr<IOStream> file(pIOHandler->Open(pFile));
 
     // Check whether we can read from the file
-    if (file.get() == nullptr) {
-        throw DeadlyImportError("Failed to open B3D file " + pFile + ".");
+    if (file == nullptr) {
+        throw DeadlyImportError("Failed to open B3D file ", pFile, ".");
     }
 
     // check whether the .b3d file is large enough to contain
@@ -143,11 +141,11 @@ AI_WONT_RETURN void B3DImporter::Oops() {
 }
 
 // ------------------------------------------------------------------------------------------------
-AI_WONT_RETURN void B3DImporter::Fail(string str) {
+AI_WONT_RETURN void B3DImporter::Fail(const string &str) {
 #ifdef DEBUG_B3D
-    ASSIMP_LOG_ERROR_F("Error in B3D file data: ", str);
+    ASSIMP_LOG_ERROR("Error in B3D file data: ", str);
 #endif
-    throw DeadlyImportError("B3D Importer - error in B3D file data: " + str);
+    throw DeadlyImportError("B3D Importer - error in B3D file data: ", str);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -233,7 +231,7 @@ string B3DImporter::ReadChunk() {
         tag += char(ReadByte());
     }
 #ifdef DEBUG_B3D
-    ASSIMP_LOG_DEBUG_F("ReadChunk: ", tag);
+    ASSIMP_LOG_DEBUG("ReadChunk: ", tag);
 #endif
     unsigned sz = (unsigned)ReadInt();
     _stack.push_back(_pos + sz);
@@ -255,7 +253,7 @@ size_t B3DImporter::ChunkSize() {
 template <class T>
 T *B3DImporter::to_array(const vector<T> &v) {
     if (v.empty()) {
-        return 0;
+        return nullptr;
     }
     T *p = new T[v.size()];
     for (size_t i = 0; i < v.size(); ++i) {
@@ -268,7 +266,7 @@ T *B3DImporter::to_array(const vector<T> &v) {
 template <class T>
 T **unique_to_array(vector<std::unique_ptr<T>> &v) {
     if (v.empty()) {
-        return 0;
+        return nullptr;
     }
     T **p = new T *[v.size()];
     for (size_t i = 0; i < v.size(); ++i) {
@@ -397,7 +395,7 @@ void B3DImporter::ReadTRIS(int v0) {
         matid = 0;
     } else if (matid < 0 || matid >= (int)_materials.size()) {
 #ifdef DEBUG_B3D
-        ASSIMP_LOG_ERROR_F("material id=", matid);
+        ASSIMP_LOG_ERROR("material id=", matid);
 #endif
         Fail("Bad material id");
     }
@@ -417,7 +415,7 @@ void B3DImporter::ReadTRIS(int v0) {
         int i2 = ReadInt() + v0;
         if (i0 < 0 || i0 >= (int)_vertices.size() || i1 < 0 || i1 >= (int)_vertices.size() || i2 < 0 || i2 >= (int)_vertices.size()) {
 #ifdef DEBUG_B3D
-            ASSIMP_LOG_ERROR_F("Bad triangle index: i0=", i0, ", i1=", i1, ", i2=", i2);
+            ASSIMP_LOG_ERROR("Bad triangle index: i0=", i0, ", i1=", i1, ", i2=", i2);
 #endif
             Fail("Bad triangle index");
             continue;
@@ -479,13 +477,13 @@ void B3DImporter::ReadKEYS(aiNodeAnim *nodeAnim) {
     while (ChunkSize()) {
         int frame = ReadInt();
         if (flags & 1) {
-            trans.push_back(aiVectorKey(frame, ReadVec3()));
+            trans.emplace_back(frame, ReadVec3());
         }
         if (flags & 2) {
-            scale.push_back(aiVectorKey(frame, ReadVec3()));
+            scale.emplace_back(frame, ReadVec3());
         }
         if (flags & 4) {
-            rot.push_back(aiQuatKey(frame, ReadQuat()));
+            rot.emplace_back(frame, ReadQuat());
         }
     }
 
@@ -619,7 +617,7 @@ void B3DImporter::ReadBB3D(aiScene *scene) {
             } else if (chunk == "BRUS") {
                 ReadBRUS();
             } else if (chunk == "NODE") {
-                ReadNODE(0);
+                ReadNODE(nullptr);
             }
             ExitChunk();
         }
@@ -644,7 +642,7 @@ void B3DImporter::ReadBB3D(aiScene *scene) {
             int n_tris = mesh->mNumFaces;
             int n_verts = mesh->mNumVertices = n_tris * 3;
 
-            aiVector3D *mv = mesh->mVertices = new aiVector3D[n_verts], *mn = 0, *mc = 0;
+            aiVector3D *mv = mesh->mVertices = new aiVector3D[n_verts], *mn = nullptr, *mc = nullptr;
             if (_vflags & 1) {
                 mn = mesh->mNormals = new aiVector3D[n_verts];
             }
@@ -673,7 +671,7 @@ void B3DImporter::ReadBB3D(aiScene *scene) {
                         int bone = v.bones[k];
                         float weight = v.weights[k];
 
-                        vweights[bone].push_back(aiVertexWeight(vertIdx + faceIndex, weight));
+                        vweights[bone].emplace_back(vertIdx + faceIndex, weight);
                     }
                 }
                 ++face;

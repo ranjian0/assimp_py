@@ -63,9 +63,9 @@ class X3DExporter {
             // empty
         }
 
-        SAttribute(SAttribute && rhs) :
-                Name(std::move(rhs.Name)),
-                Value(std::move(rhs.Value)) {
+        SAttribute(SAttribute &&rhs) AI_NO_EXCEPT :
+                Name(rhs.Name),
+                Value(rhs.Value) {
             // empty
         }
     };
@@ -241,7 +241,7 @@ public:
 
     /// \fn ~X3DExporter()
     /// Default destructor.
-    ~X3DExporter() {}
+    ~X3DExporter() = default;
 
 }; // class X3DExporter
 
