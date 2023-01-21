@@ -1,5 +1,4 @@
 # assimp-py
-![Build](https://github.com/ranjian0/assimp-py/workflows/Build/badge.svg)
 ![PyPI Linux](https://github.com/ranjian0/assimp_py/workflows/PyPI%20ManyLinux/badge.svg)
 ![PyPI Windows](https://github.com/ranjian0/assimp_py/workflows/PyPI%20WinMac/badge.svg)
 
