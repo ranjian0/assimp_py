@@ -32,8 +32,7 @@ def test_mesh_members(main_scene):
     assert(mesh.material_index == 1)
     assert(mesh.num_uv_components)
 
-    assert(mesh.faces is not None)
-    assert(mesh.num_faces > 0)
+    assert(mesh.indices is not None)
 
     assert(mesh.vertices is not None)
     assert(mesh.num_vertices > 0)
