@@ -22,7 +22,7 @@ endif(CCACHE_FOUND)
 
 # needed for python lib
 if(CMAKE_COMPILER_IS_GNUCC)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -funsigned-char")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -funsigned-char")
 endif()
 
 if(MSVC)
