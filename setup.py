@@ -3,6 +3,7 @@ import sys
 import pathlib
 import platform
 import subprocess
+import multiprocessing
 
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
@@ -61,10 +62,10 @@ class CMakeBuild(build_ext):
             '-DBUILD_SHARED_LIBS=OFF',
             '-DASSIMP_BUILD_ASSIMP_TOOLS=OFF',
             '-DASSIMP_BUILD_TESTS=OFF',
-            '-DASSIMP_WARNINGS_AS_ERRORS=OFF'
+            '-DASSIMP_WARNINGS_AS_ERRORS=OFF',
+            '-DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=FALSE',
 
             # XXX Uncomment the following lines to get lighter OBJ only build for development
-            # '-DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=FALSE',
             # '-DASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT=FALSE',
             # '-DASSIMP_BUILD_OBJ_IMPORTER=TRUE'
         ]
@@ -79,7 +80,7 @@ class CMakeBuild(build_ext):
                 '-DCMAKE_RUNTIME_OUTPUT_DIRECTORY_{}={}'.format(cfg.upper(), str(extdir.parent.absolute())),
             ]
 
-        build_args = ['--config', cfg]
+        build_args = ['--config', cfg, '-j', str(multiprocessing.cpu_count() + 1)]
         self.spawn(['cmake', '-S', '.', '-B', str(build_temp)] + cmake_args)
         if not self.dry_run:
             self.spawn(['cmake', '--build', str(build_temp)] + build_args)
