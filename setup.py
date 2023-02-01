@@ -59,6 +59,7 @@ class CMakeBuild(build_ext):
             '-DEXTENSION_NAME='+ str(extdir.name),
 
             # Assimp Flags
+            '-DASSIMP_BUILD_ZLIB=ON',
             '-DBUILD_SHARED_LIBS=OFF',
             '-DASSIMP_BUILD_ASSIMP_TOOLS=OFF',
             '-DASSIMP_BUILD_TESTS=OFF',
@@ -80,7 +81,9 @@ class CMakeBuild(build_ext):
                 '-DCMAKE_RUNTIME_OUTPUT_DIRECTORY_{}={}'.format(cfg.upper(), str(extdir.parent.absolute())),
             ]
 
-        build_args = ['--config', cfg, '-j', str(multiprocessing.cpu_count() + 1)]
+        # Multicor build for dev
+        # build_args = ['--config', cfg, '-j', str(multiprocessing.cpu_count() + 1)]
+        build_args = ['--config', cfg]
         self.spawn(['cmake', '-S', '.', '-B', str(build_temp)] + cmake_args)
         if not self.dry_run:
             self.spawn(['cmake', '--build', str(build_temp)] + build_args)

@@ -5,9 +5,9 @@ set(CMAKE_C_STANDARD 99)
 if(UNIX AND NOT APPLE)
     # https://pybind11.readthedocs.io/en/stable/compiling.html#findpython-mode
     # XXX Gotcha for building manylinux wheels.
-    find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
+    # find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
     # Uncomment for local builds 😩
-    # find_package(Python REQUIRED COMPONENTS Interpreter Development)
+    find_package(Python REQUIRED COMPONENTS Interpreter Development)
 else()
     # XXX Gotcha for building multiple python versions on windows.
     find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development)
