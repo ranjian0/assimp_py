@@ -36,9 +36,14 @@ include_directories(assimp/include ${Python_INCLUDE_DIRS})
 link_directories(${Python_LIBRARY_DIRS})
 add_library(assimp_py SHARED assimp_py.c)
 
-target_link_libraries(assimp_py assimp)
-if(APPLE)
+if(UNIX AND NOT APPLE)
+    # For some reason, by default, we link to static zlib and rt,
+    # explicitly linking z and rt prevents the error related to that 
+    target_link_libraries(assimp_py assimp z rt)
+elseif(APPLE)
     target_link_libraries(assimp_py "-undefined dynamic_lookup")
+else()
+    target_link_libraries(assimp_py assimp)
 endif()
 
 
