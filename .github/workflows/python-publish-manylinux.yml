@@ -1,9 +1,7 @@
 name: PyPI ManyLinux
 
 on:
-  push:
-    branches:
-      - "master"
+ workflow_dispatch:
 #   release:
 #     types: [created]
 
