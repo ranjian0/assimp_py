@@ -96,12 +96,13 @@ README = (HERE/"README.md").read_text()
 
 setup(
     name="assimp_py",
-    version="1.0.7",
+    version="1.0.8",
     long_description=README,
     long_description_content_type="text/markdown",
     description="Minimal Python Bindings for ASSIMP Library using C-API",
     author="Ian Ichung'wah",
     author_email="karanjaichungwa@gmail.com",
+    url="https://github.com/ranjian0/assimp_py",
     license="MIT",
     classifiers=[
         "License :: OSI Approved :: MIT License",
