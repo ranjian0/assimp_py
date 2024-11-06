@@ -1,6 +1,6 @@
 # assimp-py
-![PyPI Linux](https://github.com/ranjian0/assimp_py/workflows/PyPI%20ManyLinux/badge.svg)
-![PyPI Windows](https://github.com/ranjian0/assimp_py/workflows/PyPI%20WinMac/badge.svg)
+[![Build package](https://github.com/ranjian0/assimp_py/actions/workflows/python-package.yml/badge.svg)](https://github.com/ranjian0/assimp_py/actions/workflows/python-package.yml)
+[![Publish assimp-py to PyPI](https://github.com/ranjian0/assimp_py/actions/workflows/python-publish.yml/badge.svg)](https://github.com/ranjian0/assimp_py/actions/workflows/python-publish.yml)
 
 Minimal Python Bindings for ASSIMP Library using C-API
 
@@ -16,7 +16,7 @@ from source
 ```
 git clone https://github.com/ranjian0/assimp_py.git
 cd assimp_py
-python setup.py install
+python -m pip install .
 ```
 
 > **cmake>=3.18 is required for building from source**
