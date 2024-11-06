@@ -13,6 +13,8 @@ else()
     find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development)
 endif()
 
+# build for universal2
+set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64")
 
 # use ccache to speed up builds if it is available
 find_program(CCACHE_FOUND ccache)
@@ -31,8 +33,11 @@ endif()
 
 add_subdirectory(assimp)
 
+# build for universal2
+set_property(DIRECTORY assimp PROPERTY CMAKE_OSX_ARCHITECTURES "x86_64;arm64")
+
 # -- build the python extension
-include_directories(assimp/include ${Python_INCLUDE_DIRS})
+include_directories(assimp/include ${PROJECT_BINARY_DIR}/assimp/include ${Python_INCLUDE_DIRS})
 link_directories(${Python_LIBRARY_DIRS})
 add_library(assimp_py SHARED assimp_py.c)
 
@@ -41,7 +46,7 @@ if(UNIX AND NOT APPLE)
     # explicitly linking z and rt prevents the error related to that 
     target_link_libraries(assimp_py assimp z rt)
 elseif(APPLE)
-    target_link_libraries(assimp_py "-undefined dynamic_lookup")
+    target_link_libraries(assimp_py assimp "-undefined dynamic_lookup")
 else()
     target_link_libraries(assimp_py assimp)
 endif()

@@ -1,0 +1,208 @@
+name: Publish assimp-py to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      pypi_target:
+        description: 'Deploy to Production or Test PyPI'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - test
+      
+  release:
+    types: [published]
+
+env:
+  CIBW_BUILD: cp3*
+  CIBW_SKIP: cp36-* cp37-* cp38-*
+  CIBW_TEST_REQUIRES: pytest
+  CIBW_TEST_COMMAND: pytest {project}/tests
+
+jobs:
+  build_wheels_windows:
+    name: Build wheels on Windows (${{ matrix.arch }})
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [AMD64, ARM64]
+    env:
+      CIBW_ARCHS: ${{matrix.arch}}
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: 3.13
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install cibuildwheel==2.21.3
+
+    - name: Build Python wheels
+      run: python -m cibuildwheel --output-dir wheelhouse
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: artifact-win-${{matrix.arch}}
+        path: ./wheelhouse/*.whl
+
+  build_wheels_mac:
+    name: Build wheels on MacOS (universal2)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest]  # macos-latest (ARM64), macos-12 (Intel)
+        
+    env:
+      CIBW_ARCHS: universal2
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        name: Set up Python
+        with:
+          python-version: '3.13'
+
+      - name: Install cibuildwheel
+        run: python -m pip install cibuildwheel==2.21.3
+
+      - name: Build wheels
+        run: python -m cibuildwheel --output-dir wheelhouse
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artifact-mac-universal2
+          path: ./wheelhouse/*.whl
+          
+  build_wheels_manylinux:
+    name: Build wheels on ${{ matrix.distro }} for ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        distro: [manylinux2014, manylinux_2_28]
+        arch: [x86_64, aarch64, s390x, ppc64le]
+        include:
+          - distro: manylinux2014
+            arch: i686
+        
+    env:
+      CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.distro }}
+      CIBW_MANYLINUX_I686_IMAGE: ${{ matrix.distro }}
+      CIBW_MANYLINUX_AARCH64_IMAGE: ${{ matrix.distro }}
+      CIBW_MANYLINUX_S390X_IMAGE: ${{ matrix.distro }}
+      CIBW_MANYLINUX_PPC64LE_IMAGE: ${{ matrix.distro }}
+      CIBW_BUILD: cp3*-manylinux*
+      CIBW_ARCHS: ${{matrix.arch}}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up QEMU
+        if: ${{ matrix.arch != 'x86_64' && matrix.arch != 'i686' }}
+        uses: docker/setup-qemu-action@v3
+
+      - uses: actions/setup-python@v5
+        name: Set up Python
+        with:
+          python-version: '3.13'
+
+      - name: Install cibuildwheel
+        run: python -m pip install cibuildwheel==2.21.3
+
+      - name: Build wheels
+        run: python -m cibuildwheel --output-dir wheelhouse
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artifact-${{ matrix.distro }}-${{matrix.arch}}
+          path: ./wheelhouse/*.whl
+        
+  build_wheels_musllinux:
+    name: Build wheels on musllinux_1_2 for ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x86_64, i686, aarch64, s390x, ppc64le, armv7l]
+        
+    env:
+      CIBW_MUSLLINUX_X86_64_IMAGE: musllinux_1_2
+      CIBW_MUSLLINUX_I686_IMAGE: musllinux_1_2
+      CIBW_MUSLLINUX_AARCH64_IMAGE: musllinux_1_2
+      CIBW_MUSLLINUX_S390X_IMAGE: musllinux_1_2
+      CIBW_MUSLLINUX_PPC64LE_IMAGE: musllinux_1_2
+      CIBW_MUSLLINUX_ARMV7L_IMAGE: musllinux_1_2
+      CIBW_BUILD: cp3*-musllinux*
+      CIBW_ARCHS: ${{matrix.arch}}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up QEMU
+        if: ${{ matrix.arch != 'x86_64' && matrix.arch != 'i686' }}
+        uses: docker/setup-qemu-action@v3
+
+      - uses: actions/setup-python@v5
+        name: Set up Python
+        with:
+          python-version: '3.13'
+
+      - name: Install cibuildwheel
+        run: python -m pip install cibuildwheel==2.21.3
+
+      - name: Build wheels
+        run: python -m cibuildwheel --output-dir wheelhouse
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artifact-musllinux-${{matrix.arch}}
+          path: ./wheelhouse/*.whl
+
+  build_sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        name: Install Python
+        with:
+          python-version: '3.13'
+
+      - name: Install build
+        run: pip install build
+
+      - name: Build sdist
+        run: python -m build --sdist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artifact-source
+          path: dist/*.tar.gz
+
+  upload_pypi:
+    needs: [build_wheels_windows, build_wheels_mac, build_wheels_manylinux, build_wheels_musllinux, build_sdist]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: artifact-*
+          merge-multiple: true
+          path: dist
+
+      - name: Publish to Production PyPI
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.pypi_target == 'production') || (github.event_name == 'release' && !github.event.release.prerelease) }}
+        uses: pypa/gh-action-pypi-publish@v1.10.3
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_TOKEN }}
+
+      - name: Publish to Test PyPI
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.pypi_target == 'test') || (github.event_name == 'release' && github.event.release.prerelease) }}
+        uses: pypa/gh-action-pypi-publish@v1.10.3
+        with:
+          user: __token__
+          password: ${{ secrets.TEST_PYPI_TOKEN }}
+          repository-url: https://test.pypi.org/legacy/
