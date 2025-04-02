@@ -207,25 +207,61 @@ static PyTypeObject SceneType = {
 // --- Helper Functions ---
 
 // Safely create a memory view from a C array. Returns new reference or NULL on error.
-static PyObject* create_memoryview(void* data, Py_ssize_t len, const char* format, Py_ssize_t itemsize) {
+static PyObject* create_memoryview(void* data, Py_ssize_t len_bytes, const char* format, Py_ssize_t itemsize) {
     if (!data) {
         Py_RETURN_NONE; // Return None if the C data pointer is NULL
     }
-    Py_buffer buf_info;
-    // PyBUF_SIMPLE is often enough, but PyBUF_FORMAT ensures the format string is used.
-    // PyBUF_WRITABLE is *not* set, making the memoryview read-only by default.
-    if (PyBuffer_FillInfo(&buf_info, NULL, data, len, 1, PyBUF_FORMAT | PyBUF_STRIDES) == -1) {
-        // Error already set by PyBuffer_FillInfo
+    if (itemsize <= 0) {
+         PyErr_SetString(PyExc_ValueError, "itemsize must be positive");
+         return NULL;
+    }
+    if (len_bytes < 0) {
+        PyErr_SetString(PyExc_ValueError, "len_bytes cannot be negative");
         return NULL;
     }
-    buf_info.format = (char*)format; // Cast needed for C compatibility
-    buf_info.itemsize = itemsize; // *** SET EXPLICIT ITEMSIZE ***
+    // Check if len_bytes is divisible by itemsize
+    if (len_bytes % itemsize != 0) {
+        PyErr_Format(PyExc_ValueError, "Buffer length (%zd) is not a multiple of itemsize (%zd)", len_bytes, itemsize);
+        return NULL;
+    }
 
+    Py_ssize_t num_elements = len_bytes / itemsize;
+
+    Py_buffer buf_info;
+    // Allocate shape and strides arrays (needed by PyMemoryView_FromBuffer)
+    // For 1D array, we only need arrays of size 1
+    Py_ssize_t shape[1] = { num_elements };
+    Py_ssize_t strides[1] = { itemsize }; // Simple stride for contiguous data
+
+    // Manually initialize the Py_buffer struct
+    // Start by zeroing it out
+    memset(&buf_info, 0, sizeof(Py_buffer));
+
+    buf_info.buf = data;              // Pointer to the data buffer
+    buf_info.obj = NULL;              // We own the memory (malloc'd), no base Python object
+    buf_info.len = len_bytes;         // Total length in bytes
+    buf_info.itemsize = itemsize;     // Size of one item
+    buf_info.readonly = 1;            // Make it read-only
+    buf_info.ndim = 1;                // Number of dimensions
+    buf_info.format = (char*)format;  // Format string (cast needed)
+    buf_info.shape = shape;           // Pointer to shape array {num_elements}
+    buf_info.strides = strides;       // Pointer to strides array {itemsize}
+    buf_info.suboffsets = NULL;       // Not needed for simple buffers
+    buf_info.internal = NULL;         // Reserved
+
+    // Create the memoryview from the manually populated buffer structure
     PyObject *memview = PyMemoryView_FromBuffer(&buf_info);
     if (!memview) {
         // Error should be set by PyMemoryView_FromBuffer
         return NULL;
     }
+
+    // Note: PyMemoryView_FromBuffer creates the memoryview object.
+    // The 'buf_info' struct itself is used during creation but doesn't
+    // need to persist after the memoryview object exists, as the relevant
+    // info is copied or managed internally by the memoryview object.
+    // The shape and strides arrays declared on the stack are sufficient here.
+
     return memview; // Return new reference
 }
 
