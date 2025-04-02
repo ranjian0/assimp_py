@@ -1,8 +1,5 @@
+import math
 import pytest
-import sys
-import os
-from pathlib import Path
-import struct
 
 # Attempt import, skip if NumPy is not available for memoryview checks
 try:
@@ -203,6 +200,119 @@ class TestSceneObject:
         assert len(loaded_scene.materials) > 0 # Ensure materials exist
         for material in loaded_scene.materials:
             assert isinstance(material, dict)
+
+
+class TestNodeObject:
+    @pytest.fixture(scope="class")
+    def root_node(self, loaded_scene):
+        """Provides the root node from the loaded scene."""
+        if not loaded_scene or not hasattr(loaded_scene, 'root_node'):
+            pytest.fail("Scene object or root_node attribute missing.")
+        if loaded_scene.root_node is None:
+             pytest.fail("Scene's root_node is None.")
+        # Add check if it's actually a Node object
+        if not isinstance(loaded_scene.root_node, assimp_py.Node):
+             pytest.fail(f"Expected root_node to be assimp_py.Node, got {type(loaded_scene.root_node)}")
+        return loaded_scene.root_node
+
+    def test_node_type(self, root_node):
+        """Test that the retrieved node is of the correct type."""
+        assert isinstance(root_node, assimp_py.Node)
+
+    def test_node_basic_attributes(self, root_node):
+        """Test Node basic attributes existence and types."""
+        assert hasattr(root_node, "name")
+        assert hasattr(root_node, "transformation")
+        assert hasattr(root_node, "parent_name")
+        assert hasattr(root_node, "children")
+        assert hasattr(root_node, "mesh_indices")
+        assert hasattr(root_node, "num_children")
+        assert hasattr(root_node, "num_meshes")
+
+        assert isinstance(root_node.name, str)
+        assert isinstance(root_node.transformation, tuple)
+        # Parent of root should be None
+        assert root_node.parent_name is None
+        assert isinstance(root_node.children, list)
+        assert isinstance(root_node.mesh_indices, tuple)
+        assert isinstance(root_node.num_children, int)
+        assert isinstance(root_node.num_meshes, int)
+
+    def test_node_transformation_structure(self, root_node):
+        """Test the structure of the transformation matrix tuple."""
+        matrix = root_node.transformation
+        assert len(matrix) == 4, "Transformation should have 4 rows"
+        for row in matrix:
+            assert isinstance(row, tuple), "Each row should be a tuple"
+            assert len(row) == 4, "Each row should have 4 columns"
+            for val in row:
+                assert isinstance(val, float), "Matrix elements should be floats"
+
+    def test_node_transformation_value(self, root_node):
+        """Test if the root node transformation is likely identity."""
+        # For simple files like our OBJ, the root node often has an identity transform
+        matrix = root_node.transformation
+        identity = (
+            (1.0, 0.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+            (0.0, 0.0, 1.0, 0.0),
+            (0.0, 0.0, 0.0, 1.0),
+        )
+        # Use numpy for easier comparison if available, otherwise element-wise
+        if NUMPY_AVAILABLE:
+            np.testing.assert_allclose(np.array(matrix), np.array(identity), atol=1e-6)
+        else:
+            for r in range(4):
+                for c in range(4):
+                     # Use math.isclose for float comparison
+                     assert math.isclose(matrix[r][c], identity[r][c], abs_tol=1e-6), \
+                            f"Matrix element ({r},{c}) mismatch: {matrix[r][c]} != {identity[r][c]}"
+
+    # Modify this test
+    def test_node_mesh_indices(self, root_node):
+        """Test the mesh indices associated with nodes in the hierarchy."""
+        # Expect root node itself to have no meshes directly
+        assert root_node.num_meshes == len(root_node.mesh_indices)
+        assert root_node.num_meshes == 0, "Root node should not directly reference meshes for this file"
+        assert len(root_node.mesh_indices) == 0
+
+        # Check children - expect one child node holding the mesh index 0
+        assert root_node.num_children >= 1, "Root node should have at least one child for the mesh"
+
+        mesh_found = False
+        for child_node in root_node.children:
+            assert isinstance(child_node, assimp_py.Node)
+            if child_node.num_meshes > 0:
+                 # Found a node with meshes, assume it's the one we want for this simple file
+                 assert child_node.num_meshes == len(child_node.mesh_indices)
+                 assert child_node.num_meshes == 1, "Child node should reference exactly one mesh"
+                 assert len(child_node.mesh_indices) == 1
+                 assert isinstance(child_node.mesh_indices[0], int)
+                 assert child_node.mesh_indices[0] == 0, "Child node should reference mesh index 0"
+                 mesh_found = True
+                 break # Stop after finding the first node with meshes
+
+        assert mesh_found, "No child node found referencing the mesh"
+
+    # Also adjust the children test slightly if needed based on the above
+    def test_node_children(self, root_node):
+        """Test the children of the root node."""
+        assert root_node.num_children == len(root_node.children)
+        # For this simple OBJ, expect Assimp to create at least one child node for the mesh
+        assert root_node.num_children >= 1, "Expected at least one child node for the mesh"
+
+        print(f"\nNote: Root node has {root_node.num_children} children. Checking types.")
+        for child in root_node.children:
+            assert isinstance(child, assimp_py.Node)
+            assert child.parent_name == root_node.name # Check parent link
+
+    def test_node_name(self, root_node):
+        """Check the name of the root node."""
+        # The root node name is often empty or a default like "<Default>" or "<Scene>".
+        # It depends on the importer and file. Let's just check it's a string.
+        assert isinstance(root_node.name, str)
+        # Optionally print the name for inspection during tests:
+        # print(f"\nRoot node name: '{root_node.name}'")
 
 
 @pytest.mark.skipif(not NUMPY_AVAILABLE, reason="NumPy not found, skipping memoryview tests")
@@ -473,12 +583,3 @@ class TestMaterials:
              found_bump = True
 
         assert found_bump, "Bump map 'bumpmap.png' not found in expected texture types (NORMALS or HEIGHT)"
-
-
-# --- Standalone Function Tests (if any, otherwise covered by classes) ---
-
-# Example: Test loading without triangulation (if you had a non-triangulated file)
-# def test_load_no_triangulate_error(quad_obj_file): # Needs a file with actual quads
-#     flags = DEFAULT_FLAGS & ~assimp_py.Process_Triangulate # Remove triangulate
-#     with pytest.raises(ValueError, match="assumes triangulated faces"): # Match error from C code
-#          assimp_py.import_file(str(quad_obj_file), flags)
