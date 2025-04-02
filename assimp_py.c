@@ -287,107 +287,138 @@ static PyObject* list_from_color4d_array(const struct aiColor4D* colors, unsigne
     return list;
 }
 
-// Helper to get a material property value. Returns new reference or NULL on error.
+// Helper to get a material property value by iterating properties and using generic getters.
+// Returns new reference or NULL on error.
 static PyObject* get_material_property(struct aiMaterial *mat, const char *key, unsigned int type, unsigned int index) {
-    aiReturn ret;
+    aiReturn ret = aiReturn_FAILURE;
     PyObject *py_value = NULL;
+    const struct aiMaterialProperty* prop = NULL;
 
-    const struct aiMaterialProperty *outProp;
-    aiGetMaterialProperty(mat, key, type, index, &outProp);
-    switch (outProp->mType) {
-        case aiPTI_String: {
-            struct aiString str;
-            ret = aiGetMaterialString(mat, key, type, index, &str);
-            if (ret == aiReturn_SUCCESS) {
-                py_value = PyUnicode_FromString(str.data);
-            }
+    // 1. Find the specific property in the material's list
+    for (unsigned int i = 0; i < mat->mNumProperties; ++i) {
+        // Use .data for aiString comparison
+        if (strcmp(mat->mProperties[i]->mKey.data, key) == 0 &&
+            mat->mProperties[i]->mSemantic == type &&
+            mat->mProperties[i]->mIndex == index)
+        {
+            prop = mat->mProperties[i];
             break;
         }
-        case aiPTI_Float: {
-            unsigned int num_floats = 0; // Max number expected
-             // First call to get the size
-            ret = aiGetMaterialFloatArray(mat, key, type, index, NULL, &num_floats);
-            if(ret != aiReturn_SUCCESS || num_floats == 0) break;
+    }
 
-            // Allocate buffer + 1 for safety? No, aiGetMaterialProperty ensures size.
-            float* floats = (float*)malloc(num_floats * sizeof(float));
-            if (!floats) { PyErr_NoMemory(); return NULL; }
+    // If the property wasn't found in the list, return None.
+    if (!prop) {
+        // fprintf(stderr, "DEBUG get_material_property: Property not found for key='%s', type=%u, index=%u\n", key, type, index);
+        Py_RETURN_NONE;
+    }
 
-            ret = aiGetMaterialFloatArray(mat, key, type, index, floats, &num_floats);
+    // --- Use Fixed-Size Buffers for Array Getters ---
+    float fval[16];       // Fixed buffer for floats
+    int ival[16];         // Fixed buffer for ints
+    struct aiString sval; // For strings
+    unsigned int arr_size; // Input: buffer capacity, Output: elements written
+
+
+    // 2. Process based on the found property's type (prop->mType)
+    switch (prop->mType) {
+        case aiPTI_String:
+            // Use aiGetMaterialString (it directly uses the underlying prop->mData)
+            ret = aiGetMaterialString(mat, key, type, index, &sval);
             if (ret == aiReturn_SUCCESS) {
-                if (num_floats == 1) {
-                    py_value = PyFloat_FromDouble((double)floats[0]);
-                } else if (num_floats == 4 && 
-                           strcmp(key, "$clr.diffuse") == 0 || // Common colors
-                           strcmp(key, "$clr.specular") == 0 ||
-                           strcmp(key, "$clr.ambient") == 0 ||
-                           strcmp(key, "$clr.emissive") == 0 ||
-                           strcmp(key, "$clr.transparent") == 0 ||
-                           strcmp(key, "$clr.reflective") == 0)
-                 {
-                     py_value = Py_BuildValue("ffff", floats[0], floats[1], floats[2], floats[3]);
-                 }
-                else { // Generic list of floats
-                    py_value = PyList_New(num_floats);
-                    if (py_value) {
-                        for (unsigned int i = 0; i < num_floats; ++i) {
-                            PyObject* f = PyFloat_FromDouble((double)floats[i]);
-                            if (!f) { Py_DECREF(py_value); py_value = NULL; break; }
-                            PyList_SET_ITEM(py_value, i, f); // Steals reference to f
-                        }
-                    }
-                }
+                py_value = PyUnicode_FromString(sval.data); // Use .data
+                if (!py_value) { ret = aiReturn_FAILURE; } // Check PyUnicode creation
             }
-            free(floats);
-            break;
-        }
-        case aiPTI_Integer: {
-             unsigned int num_ints = 0;
-             ret = aiGetMaterialIntegerArray(mat, key, type, index, NULL, &num_ints);
-             if(ret != aiReturn_SUCCESS || num_ints == 0) break;
+            break; // End String case
 
-             int* ints = (int*)malloc(num_ints * sizeof(int));
-             if(!ints) { PyErr_NoMemory(); return NULL; }
+        case aiPTI_Float:
+        case aiPTI_Buffer: // Treat buffer as float
+        case aiPTI_Double: // aiGetMaterialFloatArray handles double conversion internally
+             arr_size = 16; // Input: Our buffer capacity
+             // Call the generic Float Array getter
+             ret = aiGetMaterialFloatArray(mat, key, type, index, fval, &arr_size);
+             // fprintf(stderr, "DEBUG get_material_property (Float Fixed): key='%s', ret=%d, arr_size_written=%u\n", key, ret, arr_size);
 
-             ret = aiGetMaterialIntegerArray(mat, key, type, index, ints, &num_ints);
-             if (ret == aiReturn_SUCCESS) {
-                 if (num_ints == 1) {
-                     py_value = PyLong_FromLong((long)ints[0]);
+             if (ret == aiReturn_SUCCESS && arr_size > 0) { // Check success AND elements retrieved
+                 if (arr_size == 1) {
+                     py_value = PyFloat_FromDouble((double)fval[0]);
                  } else {
-                     py_value = PyList_New(num_ints);
+                     py_value = PyList_New(arr_size);
                      if (py_value) {
-                         for (unsigned int i = 0; i < num_ints; ++i) {
-                             PyObject* integer = PyLong_FromLong((long)ints[i]);
+                         for (unsigned int i = 0; i < arr_size; ++i) {
+                             PyObject* f = PyFloat_FromDouble((double)fval[i]);
+                             if (!f) { Py_DECREF(py_value); py_value = NULL; break; }
+                             PyList_SET_ITEM(py_value, i, f); // Steals reference
+                         }
+                         if (!py_value && !PyErr_Occurred()) {
+                             PyErr_SetString(PyExc_RuntimeError, "Failed to build float list items");
+                         }
+                     } // else PyList_New failed
+                 }
+                 // Check object creation success
+                 if (!py_value && !PyErr_Occurred()) { ret = aiReturn_FAILURE; }
+                 else if (!py_value && PyErr_Occurred()) { ret = aiReturn_FAILURE; }
+             } else if (ret == aiReturn_SUCCESS && arr_size == 0) {
+                 // Property type was float/double/buffer, but getter returned 0 elements.
+                 // This shouldn't typically happen if prop->mType matched, but handle it.
+                 ret = aiReturn_FAILURE; // Treat as failure to get a *value*
+             } // else ret != SUCCESS
+             break; // End Float/Buffer/Double case
+
+        case aiPTI_Integer:
+             arr_size = 16; // Input: Our buffer capacity
+             // Call the generic Integer Array getter
+             ret = aiGetMaterialIntegerArray(mat, key, type, index, ival, &arr_size);
+             // fprintf(stderr, "DEBUG get_material_property (Int Fixed): key='%s', ret=%d, arr_size_written=%u\n", key, ret, arr_size);
+
+             if (ret == aiReturn_SUCCESS && arr_size > 0) { // Check success AND elements retrieved
+                 if (arr_size == 1) {
+                     // NOTE: No special handling for shininess here, return as Long
+                     // Conversion to float if needed should happen in Python layer
+                     py_value = PyLong_FromLong((long)ival[0]);
+                 } else { // List of integers
+                     py_value = PyList_New(arr_size);
+                     if (py_value) {
+                         for (unsigned int i = 0; i < arr_size; ++i) {
+                             PyObject* integer = PyLong_FromLong((long)ival[i]);
                              if (!integer) { Py_DECREF(py_value); py_value = NULL; break; }
                              PyList_SET_ITEM(py_value, i, integer); // Steals reference
                          }
-                     }
+                         if (!py_value && !PyErr_Occurred()) {
+                            PyErr_SetString(PyExc_RuntimeError, "Failed to build integer list items");
+                         }
+                     } // else PyList_New failed
                  }
-             }
-             free(ints);
-             break;
-        }
-        // aiPTI_Buffer not handled here for simplicity
+                  // Check object creation success
+                 if (!py_value && !PyErr_Occurred()) { ret = aiReturn_FAILURE; }
+                 else if (!py_value && PyErr_Occurred()) { ret = aiReturn_FAILURE; }
+            } else if (ret == aiReturn_SUCCESS && arr_size == 0) {
+                 // Property type was int, but getter returned 0 elements.
+                 ret = aiReturn_FAILURE; // Treat as failure to get a *value*
+            } // else ret != SUCCESS
+            break; // End Integer case
+
         default:
-            // Unsupported type or error
-            break;
-    }
+             // Unsupported property type found in the material's property list
+             // fprintf(stderr, "DEBUG get_material_property: Unsupported property type %d for key='%s'\n", prop->mType, key);
+             ret = aiReturn_FAILURE; // Mark as failure
+             break;
+    } // end switch
 
-    if (ret != aiReturn_SUCCESS && !PyErr_Occurred()) {
-        // Don't overwrite an existing error (like NoMemory)
-        // PyErr_Format(PyExc_RuntimeError, "Failed to retrieve material property '%s'", key);
-        // Return NULL, signifies failure but maybe not critical? Or maybe return None?
-        // Let's return NULL to indicate failure.
-        return NULL;
+    // --- Final Return Decision ---
+    if (ret == aiReturn_SUCCESS && py_value != NULL) {
+        // Data successfully retrieved and converted
+        return py_value;
+    } else {
+        // Something failed or no value was produced (e.g., ret!=SUCCESS, arr_size=0, Py object creation fail)
+        Py_XDECREF(py_value); // Ensure cleanup if partially created
+        if (!PyErr_Occurred()) {
+            // No specific Python error set - return None
+            Py_RETURN_NONE;
+        } else {
+            // Propagate existing Python error
+            return NULL;
+        }
     }
-
-    // If py_value is still NULL after checks, it means the property was
-    // found but conversion failed or wasn't supported.
-    if (!py_value && !PyErr_Occurred()) {
-         Py_RETURN_NONE; // Property exists but we didn't convert it, return None.
-    }
-
-    return py_value; // Return new reference (or NULL on error, or None)
 }
 
 // --- Scene Processing Logic ---
