@@ -15,6 +15,73 @@
 // Forward declarations for type objects
 static PyTypeObject MeshType;
 static PyTypeObject SceneType;
+static PyTypeObject PyNodeType;
+
+// --- Node Type Definition ---
+
+typedef struct PyNodeObject { // Use PyNodeObject convention
+    PyObject_HEAD
+    PyObject *name;          // PyUnicodeObject
+    PyObject *transformation;// Tuple[Tuple[float,...],...] (4x4 matrix)
+    PyObject *parent_name;   // PyUnicodeObject (name of parent) or Py_None
+    PyObject *children;      // PyList of PyNodeObject
+    PyObject *mesh_indices;  // PyTuple of PyLongObject
+
+    // Store counts directly for convenience
+    unsigned int num_children;
+    unsigned int num_meshes;
+
+    // NOTE: We don't store parent/children aiNode pointers here
+    // NOTE: Metadata is not included in this version
+
+} PyNodeObject; // Use PyNodeObject convention
+
+static int PyNode_init(PyNodeObject *self, PyObject *args, PyObject *kwds) {
+    // Initialize all PyObject pointers to NULL
+    self->name = NULL;
+    self->transformation = NULL;
+    self->parent_name = NULL;
+    self->children = NULL;
+    self->mesh_indices = NULL;
+    self->num_children = 0;
+    self->num_meshes = 0;
+    return 0;
+}
+
+static void PyNode_dealloc(PyNodeObject *self) {
+    Py_CLEAR(self->name);
+    Py_CLEAR(self->transformation);
+    Py_CLEAR(self->parent_name);
+    Py_CLEAR(self->children);
+    Py_CLEAR(self->mesh_indices);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+static PyMemberDef PyNode_members[] = {
+    {"name", T_OBJECT_EX, offsetof(PyNodeObject, name), READONLY, "Node name"},
+    {"transformation", T_OBJECT_EX, offsetof(PyNodeObject, transformation), READONLY, "4x4 transformation matrix (tuple of tuples)"},
+    {"parent_name", T_OBJECT_EX, offsetof(PyNodeObject, parent_name), READONLY, "Name of the parent node (str or None)"},
+    {"children", T_OBJECT_EX, offsetof(PyNodeObject, children), READONLY, "List of child Node objects"},
+    {"mesh_indices", T_OBJECT_EX, offsetof(PyNodeObject, mesh_indices), READONLY, "Tuple of mesh indices associated with this node"},
+    {"num_children", T_UINT, offsetof(PyNodeObject, num_children), READONLY, "Number of children"},
+    {"num_meshes", T_UINT, offsetof(PyNodeObject, num_meshes), READONLY, "Number of meshes referenced"},
+    // Metadata omitted for now
+    {NULL} /* Sentinel */
+};
+
+// Define the PyTypeObject for Node
+static PyTypeObject PyNodeType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "assimp_py.Node",
+    .tp_doc = "Node in the scene hierarchy",
+    .tp_basicsize = sizeof(PyNodeObject),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_new = PyType_GenericNew,
+    .tp_init = (initproc)PyNode_init,
+    .tp_dealloc = (destructor)PyNode_dealloc,
+    .tp_members = PyNode_members,
+};
 
 // --- Mesh Type Definition ---
 
@@ -163,6 +230,7 @@ typedef struct {
     PyObject_HEAD
     PyObject *meshes;     // List of Mesh objects
     PyObject *materials;  // List of Material dictionaries
+    PyObject *root_node;
     unsigned int num_meshes;
     unsigned int num_materials;
     // Could add nodes, animations, etc. here in the future
@@ -171,6 +239,7 @@ typedef struct {
 static int Scene_init(Scene *self, PyObject *args, PyObject *kwds) {
     self->meshes = NULL;
     self->materials = NULL;
+    self->root_node = NULL;
     self->num_meshes = 0;
     self->num_materials = 0;
     return 0;
@@ -179,12 +248,14 @@ static int Scene_init(Scene *self, PyObject *args, PyObject *kwds) {
 static void Scene_dealloc(Scene *self) {
     Py_CLEAR(self->meshes);
     Py_CLEAR(self->materials);
+    Py_CLEAR(self->root_node);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static PyMemberDef Scene_members[] = {
     {"meshes", T_OBJECT_EX, offsetof(Scene, meshes), READONLY, "List of meshes in the scene"},
     {"materials", T_OBJECT_EX, offsetof(Scene, materials), READONLY, "List of materials (dictionaries) in the scene"},
+    {"root_node", T_OBJECT_EX, offsetof(Scene, root_node), READONLY, "Root node of the scene hierarchy"},
     {"num_meshes", T_UINT, offsetof(Scene, num_meshes), READONLY, "Number of meshes"},
     {"num_materials", T_UINT, offsetof(Scene, num_materials), READONLY, "Number of materials"},
     {NULL} /* Sentinel */
@@ -421,7 +492,65 @@ static PyObject* get_material_property(struct aiMaterial *mat, const char *key, 
     }
 }
 
+// Helper to create a Python tuple of floats from a row of aiMatrix4x4
+// Returns a NEW reference or NULL on error
+static PyObject* tuple_from_matrix4x4_row(const float* row_data) {
+    return Py_BuildValue("ffff", row_data[0], row_data[1], row_data[2], row_data[3]);
+    // Py_BuildValue returns NULL on error and sets exception
+}
+
+// Helper to create Python tuple (4x4) from aiMatrix4x4
+// Returns a NEW reference or NULL on error
+static PyObject* tuple_from_matrix4x4(const struct aiMatrix4x4* mat) {
+    PyObject* matrix_tuple = PyTuple_New(4);
+    if (!matrix_tuple) return NULL;
+
+    PyObject* row0 = tuple_from_matrix4x4_row(&(mat->a1)); // Assimp stores row-major: a1-a4 is row 0
+    PyObject* row1 = tuple_from_matrix4x4_row(&(mat->b1)); // b1-b4 is row 1
+    PyObject* row2 = tuple_from_matrix4x4_row(&(mat->c1)); // c1-c4 is row 2
+    PyObject* row3 = tuple_from_matrix4x4_row(&(mat->d1)); // d1-d4 is row 3
+
+    if (!row0 || !row1 || !row2 || !row3) {
+        Py_XDECREF(row0); Py_XDECREF(row1); Py_XDECREF(row2); Py_XDECREF(row3);
+        Py_DECREF(matrix_tuple);
+        return NULL;
+    }
+
+    // PyTuple_SET_ITEM steals references
+    PyTuple_SET_ITEM(matrix_tuple, 0, row0);
+    PyTuple_SET_ITEM(matrix_tuple, 1, row1);
+    PyTuple_SET_ITEM(matrix_tuple, 2, row2);
+    PyTuple_SET_ITEM(matrix_tuple, 3, row3);
+
+    return matrix_tuple;
+}
+
+// Helper to create Python tuple from unsigned int array
+// Returns a NEW reference or NULL on error
+static PyObject* tuple_from_uint_array(const unsigned int* arr, unsigned int size) {
+    if (size == 0 || !arr) { // Handle case of no meshes
+        return PyTuple_New(0); // Return empty tuple
+    }
+    PyObject* tuple = PyTuple_New(size);
+    if (!tuple) return NULL;
+
+    for (unsigned int i = 0; i < size; ++i) {
+        PyObject* val = PyLong_FromUnsignedLong(arr[i]);
+        if (!val) {
+            Py_DECREF(tuple);
+            return NULL;
+        }
+        PyTuple_SET_ITEM(tuple, i, val); // Steals reference
+    }
+    return tuple;
+}
+
+
 // --- Scene Processing Logic ---
+
+// --- Forward Declaration for Recursion ---
+static PyObject* process_node_recursive(struct aiNode* c_node);
+
 
 // Process materials from aiScene into a Python list of dictionaries.
 // Returns a new reference to the list, or NULL on error.
@@ -760,6 +889,67 @@ fail_mesh_list:
 }
 
 
+// Recursively process Assimp nodes and build the Python Node hierarchy
+// Returns a NEW reference to the created PyNodeObject or NULL on error
+static PyObject* process_node_recursive(struct aiNode* c_node) {
+    if (!c_node) { // Should not happen for root, but check anyway
+        PyErr_SetString(PyExc_ValueError, "Encountered NULL aiNode during processing");
+        return NULL;
+    }
+
+    // 1. Create Python Node object
+    PyNodeObject* py_node = (PyNodeObject*)PyNodeType.tp_alloc(&PyNodeType, 0);
+    if (!py_node) return NULL; // Allocation failed (MemoryError likely set)
+
+    // 2. Populate Simple Members
+    py_node->name = PyUnicode_FromString(c_node->mName.data);
+    if (!py_node->name) goto node_proc_error;
+
+    py_node->transformation = tuple_from_matrix4x4(&c_node->mTransformation);
+    if (!py_node->transformation) goto node_proc_error;
+
+    // Parent Name (or None for root)
+    if (c_node->mParent) {
+        py_node->parent_name = PyUnicode_FromString(c_node->mParent->mName.data);
+        if (!py_node->parent_name) goto node_proc_error;
+    } else {
+        Py_INCREF(Py_None);
+        py_node->parent_name = Py_None;
+    }
+
+    // Mesh Indices
+    py_node->num_meshes = c_node->mNumMeshes;
+    py_node->mesh_indices = tuple_from_uint_array(c_node->mMeshes, c_node->mNumMeshes);
+    if (!py_node->mesh_indices) goto node_proc_error;
+
+    // 3. Populate Children (Recursive Step)
+    py_node->num_children = c_node->mNumChildren;
+    py_node->children = PyList_New(py_node->num_children);
+    if (!py_node->children) goto node_proc_error;
+
+    for (unsigned int i = 0; i < py_node->num_children; ++i) {
+        // Recursively process child
+        PyObject* py_child = process_node_recursive(c_node->mChildren[i]);
+        if (!py_child) {
+            // Error occurred deeper in recursion
+            goto node_proc_error; // Children list and self will be cleaned up
+        }
+        // PyList_SET_ITEM steals the reference to py_child
+        if (PyList_SetItem(py_node->children, i, py_child) < 0) {
+            Py_DECREF(py_child); // Decref if SET_ITEM failed
+            goto node_proc_error;
+        }
+    }
+
+    // Success
+    return (PyObject*)py_node;
+
+// Error handling: clean up partially created node
+node_proc_error:
+    Py_DECREF(py_node); // This calls PyNode_dealloc which Py_CLEARs members
+    return NULL;
+}
+
 // --- Module Methods ---
 
 PyDoc_STRVAR(import_file_doc,
@@ -837,6 +1027,19 @@ static PyObject* py_import_file(PyObject *self, PyObject *args) {
         goto fail; // Error occurred during material processing
     }
 
+    // **** Process Node Hierarchy ****
+    if (c_scene->mRootNode) {
+        py_scene->root_node = process_node_recursive(c_scene->mRootNode);
+        if (!py_scene->root_node) {
+            // Error occurred during node processing
+            goto fail;
+        }
+    } else {
+        // Should not happen if aiImportFile succeeded, but handle defensively
+        Py_INCREF(Py_None);
+        py_scene->root_node = Py_None;
+    }    
+
     // Success! Release the C scene and return the Python scene
     aiReleaseImport(c_scene);
     return (PyObject *)py_scene;
@@ -880,12 +1083,14 @@ PyMODINIT_FUNC PyInit_assimp_py(void) {
     // Initialize Types
     if (PyType_Ready(&MeshType) < 0) return NULL;
     if (PyType_Ready(&SceneType) < 0) return NULL;
+    if (PyType_Ready(&PyNodeType) < 0) return NULL;
 
     // Create Module
     module = PyModule_Create(&assimp_py_module);
     if (!module) {
         Py_DECREF(&MeshType); // Need cleanup if module creation fails
         Py_DECREF(&SceneType);
+        Py_DECREF(&PyNodeType);
         return NULL;
     }
 
@@ -893,7 +1098,6 @@ PyMODINIT_FUNC PyInit_assimp_py(void) {
     Py_INCREF(&MeshType); // Module takes ownership
     if (PyModule_AddObject(module, "Mesh", (PyObject *)&MeshType) < 0) {
         Py_DECREF(&MeshType);
-        Py_DECREF(&SceneType);
         Py_DECREF(module);
         return NULL;
     }
@@ -905,6 +1109,15 @@ PyMODINIT_FUNC PyInit_assimp_py(void) {
         Py_DECREF(module);
         return NULL;
     }
+
+    Py_INCREF(&PyNodeType); // **** ADDED ****
+    if (PyModule_AddObject(module, "Node", (PyObject *)&PyNodeType) < 0) {
+        Py_DECREF(&MeshType);   // **** Cleanup on failure ****
+        Py_DECREF(&SceneType);  // **** Cleanup on failure ****
+        Py_DECREF(&PyNodeType); // **** Cleanup on failure ****
+        Py_DECREF(module);
+        return NULL;
+    }    
 
     // Add Constants (Post-processing flags) - Abbreviated list for example
     int error = 0;
