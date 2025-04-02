@@ -1,578 +1,898 @@
 #define PY_SSIZE_T_CLEAN
-#include <stdio.h>
-#include <string.h>
 #include <Python.h>
-#include <structmember.h>
+#include <structmember.h> // For PyMemberDef, T_* flags, offsetof
+#include <stdio.h>        // For FILE, fopen, etc. (though only used for existence check)
+#include <string.h>       // For strcmp, memcpy
+#include <stdlib.h>       // For malloc, free
 
-#include "assimp/scene.h"
-#include "assimp/cimport.h"
-#include "assimp/postprocess.h"
+// Define ASSIMP_DLL for dynamic linking if needed (common on Windows)
+// #define ASSIMP_DLL
+#include <assimp/cimport.h>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+#include <assimp/material.h> // For AI_MATKEY_* definitions
 
-#ifndef uint
-#define uint unsigned int
-#endif
+// Forward declarations for type objects
+static PyTypeObject MeshType;
+static PyTypeObject SceneType;
 
-// Mesh
+// --- Mesh Type Definition ---
+
 typedef struct {
     PyObject_HEAD
-    const char* name;
-    uint num_vertices;
-    uint material_index;
-    PyObject* num_uv_components;
+    // --- Python Objects (exposed as attributes) ---
+    PyObject *name;             // PyUnicodeObject
+    PyObject *num_uv_components;// List of ints (or maybe just one int if needed?)
+    PyObject *indices;          // PyMemoryView (uint32)
+    PyObject *vertices;         // PyMemoryView (float32 x 3)
+    PyObject *normals;          // PyMemoryView (float32 x 3) or None
+    PyObject *tangents;         // PyMemoryView (float32 x 3) or None
+    PyObject *bitangents;       // PyMemoryView (float32 x 3) or None
+    PyObject *colors;           // List of PyMemoryView (float32 x 4) or None
+    PyObject *texcoords;        // List of PyMemoryView (float32 x N) or None
 
-    PyObject *indices;
-    PyObject *colors;
-    PyObject *normals;
-    PyObject *vertices;
-    PyObject *tangents;
-    PyObject *texcoords;
-    PyObject *bitangents;
+    // --- C Data Pointers (managed internally) ---
+    // We store these to manage the lifetime of the memory backing the memoryviews
+    unsigned int *c_indices;
+    float *c_vertices;
+    float *c_normals;
+    float *c_tangents;
+    float *c_bitangents;
+    float **c_colors;           // Array of pointers to color sets
+    float **c_texcoords;        // Array of pointers to texcoord sets
+
+    // --- Other Attributes ---
+    unsigned int num_vertices;
+    unsigned int num_indices;    // Total number of indices (num_faces * 3 if triangulated)
+    unsigned int num_faces;      // Original number of faces
+    unsigned int material_index;
+    unsigned int num_color_sets;
+    unsigned int num_texcoord_sets;
+    unsigned int *c_num_uv_components; // Array for UV component counts
+
 } Mesh;
 
-static PyMemberDef Mesh_members[] = {
-    {"name", T_STRING, offsetof(Mesh, name), READONLY, NULL},
-    {"material_index", T_UINT, offsetof(Mesh, material_index), READONLY, NULL},
-    {"num_uv_components", T_OBJECT, offsetof(Mesh, num_uv_components), READONLY, NULL},
-
-    {"indices", T_OBJECT, offsetof(Mesh, indices), READONLY, NULL},
-
-    {"vertices", T_OBJECT, offsetof(Mesh, vertices), READONLY, NULL},
-    {"num_vertices", T_UINT, offsetof(Mesh, num_vertices), READONLY, NULL},
-
-    {"normals", T_OBJECT, offsetof(Mesh, normals), READONLY, NULL},
-    {"tangents", T_OBJECT, offsetof(Mesh, tangents), READONLY, NULL},
-    {"bitangents", T_OBJECT, offsetof(Mesh, bitangents), READONLY, NULL},
-    {"colors", T_OBJECT, offsetof(Mesh, colors), READONLY, NULL},
-    {"texcoords", T_OBJECT, offsetof(Mesh, texcoords), READONLY, NULL},
-    {NULL},
-};
-
 static int Mesh_init(Mesh *self, PyObject *args, PyObject *kwds) {
-    self->name = "";
+    // Initialize all PyObject pointers to NULL is crucial for safe deallocation
+    self->name = NULL;
+    self->num_uv_components = NULL;
+    self->indices = NULL;
+    self->vertices = NULL;
+    self->normals = NULL;
+    self->tangents = NULL;
+    self->bitangents = NULL;
+    self->colors = NULL;
+    self->texcoords = NULL;
+
+    // Initialize C pointers to NULL and counts to 0
+    self->c_indices = NULL;
+    self->c_vertices = NULL;
+    self->c_normals = NULL;
+    self->c_tangents = NULL;
+    self->c_bitangents = NULL;
+    self->c_colors = NULL;
+    self->c_texcoords = NULL;
+    self->c_num_uv_components = NULL;
+
     self->num_vertices = 0;
+    self->num_indices = 0;
+    self->num_faces = 0;
     self->material_index = 0;
+    self->num_color_sets = 0;
+    self->num_texcoord_sets = 0;
 
-    Py_INCREF(Py_None);
-    self->indices = Py_None;
-    Py_INCREF(Py_None);
-    self->vertices = Py_None;
-    Py_INCREF(Py_None);
-    self->normals = Py_None;
-    Py_INCREF(Py_None);
-    self->tangents = Py_None;
-    Py_INCREF(Py_None);
-    self->bitangents = Py_None;
-    Py_INCREF(Py_None);
-    self->num_uv_components = Py_None;
-
+    // This init shouldn't be called directly by Python users typically.
+    // Initialization happens during the scene loading process.
     return 0;
 }
 
 static void Mesh_dealloc(Mesh *self) {
+    // Clear Python objects (decrements reference count)
+    Py_CLEAR(self->name);
+    Py_CLEAR(self->num_uv_components);
     Py_CLEAR(self->indices);
     Py_CLEAR(self->vertices);
     Py_CLEAR(self->normals);
     Py_CLEAR(self->tangents);
     Py_CLEAR(self->bitangents);
-    Py_CLEAR(self->num_uv_components);
-    Py_TYPE(self)->tp_free((PyObject*)self);
+    Py_CLEAR(self->colors);
+    Py_CLEAR(self->texcoords);
+
+    // Free C arrays
+    free(self->c_indices);
+    free(self->c_vertices);
+    free(self->c_normals);
+    free(self->c_tangents);
+    free(self->c_bitangents);
+    if (self->c_colors) {
+        for (unsigned int i = 0; i < self->num_color_sets; ++i) {
+            free(self->c_colors[i]);
+        }
+        free(self->c_colors);
+    }
+    if (self->c_texcoords) {
+        for (unsigned int i = 0; i < self->num_texcoord_sets; ++i) {
+            free(self->c_texcoords[i]);
+        }
+        free(self->c_texcoords);
+    }
+    free(self->c_num_uv_components);
+
+
+    // Free the object itself
+    Py_TYPE(self)->tp_free((PyObject *)self);
 }
+
+// Expose attributes as read-only members
+static PyMemberDef Mesh_members[] = {
+    {"name", T_OBJECT_EX, offsetof(Mesh, name), READONLY, "Mesh name"},
+    {"material_index", T_UINT, offsetof(Mesh, material_index), READONLY, "Material index for this mesh"},
+    {"num_vertices", T_UINT, offsetof(Mesh, num_vertices), READONLY, "Number of vertices"},
+    {"num_faces", T_UINT, offsetof(Mesh, num_faces), READONLY, "Number of faces"},
+    {"num_indices", T_UINT, offsetof(Mesh, num_indices), READONLY, "Total number of indices"},
+
+    // Data attributes (MemoryViews or None)
+    {"indices", T_OBJECT_EX, offsetof(Mesh, indices), READONLY, "Vertex indices (memoryview, uint32)"},
+    {"vertices", T_OBJECT_EX, offsetof(Mesh, vertices), READONLY, "Vertex positions (memoryview, float32, Nx3)"},
+    {"normals", T_OBJECT_EX, offsetof(Mesh, normals), READONLY, "Vertex normals (memoryview, float32, Nx3 or None)"},
+    {"tangents", T_OBJECT_EX, offsetof(Mesh, tangents), READONLY, "Vertex tangents (memoryview, float32, Nx3 or None)"},
+    {"bitangents", T_OBJECT_EX, offsetof(Mesh, bitangents), READONLY, "Vertex bitangents (memoryview, float32, Nx3 or None)"},
+    {"colors", T_OBJECT_EX, offsetof(Mesh, colors), READONLY, "List of vertex color sets (list of memoryview, float32, Nx4 or None)"},
+    {"texcoords", T_OBJECT_EX, offsetof(Mesh, texcoords), READONLY, "List of vertex texture coordinate sets (list of memoryview, float32, NxNcomp or None)"},
+    {"num_uv_components", T_OBJECT_EX, offsetof(Mesh, num_uv_components), READONLY, "List of component counts for each texcoord set"},
+    {NULL} /* Sentinel */
+};
 
 static PyTypeObject MeshType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name="assimp.Mesh",
-    .tp_doc="Container for vertex data",
-    .tp_new=PyType_GenericNew,
-    .tp_basicsize=sizeof(Mesh),
-    .tp_itemsize=0,
-    .tp_flags=Py_TPFLAGS_DEFAULT,
-    .tp_init=(initproc)Mesh_init,
-    .tp_dealloc=(destructor)Mesh_dealloc,
-    .tp_members=Mesh_members,
+    .tp_name = "assimp_py.Mesh",
+    .tp_doc = "Mesh object containing vertex data and indices",
+    .tp_basicsize = sizeof(Mesh),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_new = PyType_GenericNew,
+    .tp_init = (initproc)Mesh_init,
+    .tp_dealloc = (destructor)Mesh_dealloc,
+    .tp_members = Mesh_members,
 };
 
-// Scene
+
+// --- Scene Type Definition ---
+
 typedef struct {
     PyObject_HEAD
-    PyObject *meshes;
-    uint num_meshes;
-
-    PyObject *materials;
-    uint num_materials;
-
+    PyObject *meshes;     // List of Mesh objects
+    PyObject *materials;  // List of Material dictionaries
+    unsigned int num_meshes;
+    unsigned int num_materials;
+    // Could add nodes, animations, etc. here in the future
 } Scene;
 
-static int Scene_init(Scene *scene, PyObject *args, PyObject *kwds) {
-    Py_INCREF(Py_None);
-    scene->meshes = Py_None;
-    Py_INCREF(Py_None);
-    scene->materials = Py_None;
-
-    scene->num_meshes = 0;
-    scene->num_materials = 0;
+static int Scene_init(Scene *self, PyObject *args, PyObject *kwds) {
+    self->meshes = NULL;
+    self->materials = NULL;
+    self->num_meshes = 0;
+    self->num_materials = 0;
     return 0;
 }
 
 static void Scene_dealloc(Scene *self) {
     Py_CLEAR(self->meshes);
     Py_CLEAR(self->materials);
-    Py_TYPE(self)->tp_free((PyObject*)self);
+    Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static PyMemberDef Scene_members[] = {
-    {"meshes", T_OBJECT, offsetof(Scene, meshes), READONLY, NULL},
-    {"materials", T_OBJECT, offsetof(Scene, materials), READONLY, NULL},
-
-    {"num_meshes", T_UINT, offsetof(Scene, num_meshes), READONLY, NULL},
-    {"num_materials", T_UINT, offsetof(Scene, num_materials), READONLY, NULL},
-    {NULL},
+    {"meshes", T_OBJECT_EX, offsetof(Scene, meshes), READONLY, "List of meshes in the scene"},
+    {"materials", T_OBJECT_EX, offsetof(Scene, materials), READONLY, "List of materials (dictionaries) in the scene"},
+    {"num_meshes", T_UINT, offsetof(Scene, num_meshes), READONLY, "Number of meshes"},
+    {"num_materials", T_UINT, offsetof(Scene, num_materials), READONLY, "Number of materials"},
+    {NULL} /* Sentinel */
 };
 
 static PyTypeObject SceneType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name="assimp.Scene",
-    .tp_doc="Container for meshes and materials",
-    .tp_new=PyType_GenericNew,
-    .tp_basicsize=sizeof(Scene),
-    .tp_itemsize=0,
-    .tp_flags=Py_TPFLAGS_DEFAULT,
-    .tp_init=(initproc)Scene_init,
-    .tp_dealloc=(destructor)Scene_dealloc,
-    .tp_members=Scene_members,
+    .tp_name = "assimp_py.Scene",
+    .tp_doc = "Scene object containing meshes and materials loaded from a file",
+    .tp_basicsize = sizeof(Scene),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_new = PyType_GenericNew,
+    .tp_init = (initproc)Scene_init,
+    .tp_dealloc = (destructor)Scene_dealloc,
+    .tp_members = Scene_members,
 };
 
-// - Scene Processing Methods
-static PyObject* tuple_from_face(struct aiFace *f) {
-    PyObject *tup = PyTuple_New(f->mNumIndices);
-    for(uint i=0; i < f->mNumIndices; i++) {
-        PyObject *val = PyLong_FromUnsignedLong(f->mIndices[i]);
-        if (!val) {
-            Py_DECREF(tup);
-            return NULL;
-        }
-        PyTuple_SetItem(tup, i, val);
-    }
-    return tup;
-}
 
-static PyObject* tuple_from_vec3d(struct aiVector3D *vec) {
-    PyObject *tup = PyTuple_New(3);
-    PyObject *x = PyFloat_FromDouble(vec->x);
-    PyObject *y = PyFloat_FromDouble(vec->y);
-    PyObject *z = PyFloat_FromDouble(vec->z);
-    if (!x || !y || !z) {
-        Py_XDECREF(x);
-        Py_XDECREF(y);
-        Py_XDECREF(z);
-        Py_DECREF(tup);
+// --- Helper Functions ---
+
+// Safely create a memory view from a C array. Returns new reference or NULL on error.
+static PyObject* create_memoryview(void* data, Py_ssize_t len, const char* format, Py_ssize_t itemsize) {
+    if (!data) {
+        Py_RETURN_NONE; // Return None if the C data pointer is NULL
+    }
+    Py_buffer buf_info;
+    // PyBUF_SIMPLE is often enough, but PyBUF_FORMAT ensures the format string is used.
+    // PyBUF_WRITABLE is *not* set, making the memoryview read-only by default.
+    if (PyBuffer_FillInfo(&buf_info, NULL, data, len, 1, PyBUF_FORMAT | PyBUF_STRIDES) == -1) {
+        // Error already set by PyBuffer_FillInfo
         return NULL;
     }
-    PyTuple_SetItem(tup, 0, x);
-    PyTuple_SetItem(tup, 1, y);
-    PyTuple_SetItem(tup, 2, z);
-    return tup;
+    buf_info.format = (char*)format; // Cast needed for C compatibility
+    buf_info.itemsize = itemsize; // *** SET EXPLICIT ITEMSIZE ***
+
+    PyObject *memview = PyMemoryView_FromBuffer(&buf_info);
+    if (!memview) {
+        // Error should be set by PyMemoryView_FromBuffer
+        return NULL;
+    }
+    return memview; // Return new reference
 }
 
-static PyObject* tuple_from_col4d(struct aiColor4D *vec) {
-    PyObject *tup = PyTuple_New(3);
-    PyObject *r = PyFloat_FromDouble(vec->r);
-    PyObject *g = PyFloat_FromDouble(vec->g);
-    PyObject *b = PyFloat_FromDouble(vec->b);
-    PyObject *a = PyFloat_FromDouble(vec->a);
-    if (!r || !g || !b || !a) {
-        Py_XDECREF(r);
-        Py_XDECREF(g);
-        Py_XDECREF(b);
-        Py_XDECREF(a);
-        Py_DECREF(tup);
+// Helper to create a Python list of floats from a C array of aiColor4D
+// Returns a new reference or NULL on error.
+static PyObject* list_from_color4d_array(const struct aiColor4D* colors, unsigned int count) {
+    PyObject* list = PyList_New(count);
+    if (!list) return NULL;
+
+    for (unsigned int i = 0; i < count; ++i) {
+        PyObject* tuple = Py_BuildValue("ffff", colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+        if (!tuple) {
+            Py_DECREF(list);
+            return NULL;
+        }
+        // PyList_SetItem steals the reference to tuple, no DECREF needed on success
+        if (PyList_SetItem(list, i, tuple) < 0) {
+             Py_DECREF(tuple);
+             Py_DECREF(list);
+             return NULL;
+        }
+    }
+    return list;
+}
+
+// Helper to get a material property value. Returns new reference or NULL on error.
+static PyObject* get_material_property(struct aiMaterial *mat, const char *key, unsigned int type, unsigned int index) {
+    aiReturn ret;
+    PyObject *py_value = NULL;
+
+    const struct aiMaterialProperty *outProp;
+    aiGetMaterialProperty(mat, key, type, index, &outProp);
+    switch (outProp->mType) {
+        case aiPTI_String: {
+            struct aiString str;
+            ret = aiGetMaterialString(mat, key, type, index, &str);
+            if (ret == aiReturn_SUCCESS) {
+                py_value = PyUnicode_FromString(str.data);
+            }
+            break;
+        }
+        case aiPTI_Float: {
+            unsigned int num_floats = 0; // Max number expected
+             // First call to get the size
+            ret = aiGetMaterialFloatArray(mat, key, type, index, NULL, &num_floats);
+            if(ret != aiReturn_SUCCESS || num_floats == 0) break;
+
+            // Allocate buffer + 1 for safety? No, aiGetMaterialProperty ensures size.
+            float* floats = (float*)malloc(num_floats * sizeof(float));
+            if (!floats) { PyErr_NoMemory(); return NULL; }
+
+            ret = aiGetMaterialFloatArray(mat, key, type, index, floats, &num_floats);
+            if (ret == aiReturn_SUCCESS) {
+                if (num_floats == 1) {
+                    py_value = PyFloat_FromDouble((double)floats[0]);
+                } else if (num_floats == 4 && 
+                           strcmp(key, "$clr.diffuse") == 0 || // Common colors
+                           strcmp(key, "$clr.specular") == 0 ||
+                           strcmp(key, "$clr.ambient") == 0 ||
+                           strcmp(key, "$clr.emissive") == 0 ||
+                           strcmp(key, "$clr.transparent") == 0 ||
+                           strcmp(key, "$clr.reflective") == 0)
+                 {
+                     py_value = Py_BuildValue("ffff", floats[0], floats[1], floats[2], floats[3]);
+                 }
+                else { // Generic list of floats
+                    py_value = PyList_New(num_floats);
+                    if (py_value) {
+                        for (unsigned int i = 0; i < num_floats; ++i) {
+                            PyObject* f = PyFloat_FromDouble((double)floats[i]);
+                            if (!f) { Py_DECREF(py_value); py_value = NULL; break; }
+                            PyList_SET_ITEM(py_value, i, f); // Steals reference to f
+                        }
+                    }
+                }
+            }
+            free(floats);
+            break;
+        }
+        case aiPTI_Integer: {
+             unsigned int num_ints = 0;
+             ret = aiGetMaterialIntegerArray(mat, key, type, index, NULL, &num_ints);
+             if(ret != aiReturn_SUCCESS || num_ints == 0) break;
+
+             int* ints = (int*)malloc(num_ints * sizeof(int));
+             if(!ints) { PyErr_NoMemory(); return NULL; }
+
+             ret = aiGetMaterialIntegerArray(mat, key, type, index, ints, &num_ints);
+             if (ret == aiReturn_SUCCESS) {
+                 if (num_ints == 1) {
+                     py_value = PyLong_FromLong((long)ints[0]);
+                 } else {
+                     py_value = PyList_New(num_ints);
+                     if (py_value) {
+                         for (unsigned int i = 0; i < num_ints; ++i) {
+                             PyObject* integer = PyLong_FromLong((long)ints[i]);
+                             if (!integer) { Py_DECREF(py_value); py_value = NULL; break; }
+                             PyList_SET_ITEM(py_value, i, integer); // Steals reference
+                         }
+                     }
+                 }
+             }
+             free(ints);
+             break;
+        }
+        // aiPTI_Buffer not handled here for simplicity
+        default:
+            // Unsupported type or error
+            break;
+    }
+
+    if (ret != aiReturn_SUCCESS && !PyErr_Occurred()) {
+        // Don't overwrite an existing error (like NoMemory)
+        // PyErr_Format(PyExc_RuntimeError, "Failed to retrieve material property '%s'", key);
+        // Return NULL, signifies failure but maybe not critical? Or maybe return None?
+        // Let's return NULL to indicate failure.
         return NULL;
     }
 
-    PyTuple_SetItem(tup, 0, r);
-    PyTuple_SetItem(tup, 1, g);
-    PyTuple_SetItem(tup, 2, b);
-    PyTuple_SetItem(tup, 3, a);
-    return tup;
-}
-
-static PyObject* list_from_vec3d(struct aiVector3D *arr, uint size) {
-    PyObject *items = PyList_New(size);
-    for(uint i=0; i<size; i++) {
-        PyObject *tup = tuple_from_vec3d(&arr[i]);
-        if (!tup) {
-            Py_DECREF(items);
-            return NULL;
-        }
-        PyList_SetItem(items, i, tup);
-    }
-    return items;
-}
-
-static PyObject* list_from_col4d(struct aiColor4D *arr, uint size) {
-    PyObject *items = PyList_New(size);
-    for(uint i=0; i<size; i++) {
-        PyObject *tup = tuple_from_col4d(&arr[i]);
-        if (!tup) {
-            Py_DECREF(items);
-            return NULL;
-        }
-        PyList_SetItem(items, i, tup);
-    }
-    return items;
-}
-
-static char* get_prop_name(char* prop) {
-    if (strcmp(prop, "?mat.name") == 0)
-        return "NAME";
-    else if (strcmp(prop, "$mat.twosided") == 0)
-        return "TWOSIDED";
-    else if (strcmp(prop, "$mat.shadingm") == 0)
-        return "SHADING_MODEL";
-    else if (strcmp(prop, "$mat.wireframe") == 0)
-        return "ENABLE_WIREFRAME";
-    else if (strcmp(prop, "$mat.blend") == 0)
-        return "BLEND_FUNC";
-    else if (strcmp(prop, "$mat.opacity") == 0)
-        return "OPACITY";
-    else if (strcmp(prop, "$mat.bumpscaling") == 0)
-        return "BUMPSCALING";
-    else if (strcmp(prop, "$mat.shininess") == 0)
-        return "SHININESS";
-    else if (strcmp(prop, "$mat.reflectivity") == 0)
-        return "REFLECTIVITY";
-    else if (strcmp(prop, "$mat.shinpercent") == 0)
-        return "SHININESS_STRENGTH";
-    else if (strcmp(prop, "$mat.refracti") == 0)
-        return "REFRACTI";
-    else if (strcmp(prop, "$clr.diffuse") == 0)
-        return "COLOR_DIFFUSE";
-    else if (strcmp(prop, "$clr.ambient") == 0)
-        return "COLOR_AMBIENT";
-    else if (strcmp(prop, "$clr.specular") == 0)
-        return "COLOR_SPECULAR";
-    else if (strcmp(prop, "$clr.emissive") == 0)
-        return "COLOR_EMISSIVE";
-    else if (strcmp(prop, "$clr.transparent") == 0)
-        return "COLOR_TRANSPARENT";
-    else if (strcmp(prop, "$clr.reflective") == 0)
-        return "COLOR_REFLECTIVE";
-    else if (strcmp(prop, "?bg.global") == 0)
-        return "GLOBAL_BACKGROUND_IMAGE";
-    else if (strcmp(prop, "$tex.file") == 0)
-        return "TEXTURE_BASE";
-    else if (strcmp(prop, "$tex.mapping") == 0)
-        return "MAPPING_BASE";
-    else if (strcmp(prop, "$tex.flags") == 0)
-        return "TEXFLAGS_BASE";
-    else if (strcmp(prop, "$tex.uvwsrc") == 0)
-        return "UVWSRC_BASE";
-    else if (strcmp(prop, "$tex.mapmodev") == 0)
-        return "MAPPINGMODE_V_BASE";
-    else if (strcmp(prop, "$tex.mapaxis") == 0)
-        return "TEXMAP_AXIS_BASE";
-    else if (strcmp(prop, "$tex.blend") == 0)
-        return "TEXBLEND_BASE";
-    else if (strcmp(prop, "$tex.uvtrafo") == 0)
-        return "UVTRANSFORM_BASE";
-    else if (strcmp(prop, "$tex.op") == 0)
-        return "TEXOP_BASE";
-    else if (strcmp(prop, "$tex.mapmodeu") == 0)
-        return "MAPPINGMODE_U_BASE";
-    else
-        return "NONE";
-}
-
-static PyObject* props_from_material(struct aiMaterial *mat) {
-    PyObject *prop_val;
-    PyObject *props = PyDict_New();
-
-    int result;
-    int ival[16];
-    float fval[16];
-    struct aiString sval;
-    uint arr_size;
-    for(uint i=0; i<mat->mNumProperties; i++) {
-        struct aiMaterialProperty *prop = mat->mProperties[i];
-
-        switch(prop->mType) {
-            case aiPTI_String:
-                result = aiGetMaterialString(mat, prop->mKey.data, -1, 0, &sval);
-                break;
-            case aiPTI_Float:
-                arr_size = 16;
-                result = aiGetMaterialFloatArray(mat, prop->mKey.data, -1, 0, fval, &arr_size);
-                break;
-            case aiPTI_Integer:
-                arr_size = 16;
-                result = aiGetMaterialIntegerArray(mat, prop->mKey.data, -1, 0, ival, &arr_size);
-                break;
-            default:
-                continue;
-        }
-
-        if(result == aiReturn_FAILURE) {
-            continue;
-        } else if(result == aiReturn_OUTOFMEMORY) {
-            PyErr_SetString(PyExc_MemoryError, "Memory Error Creating material Properties");
-            return props;
-        }
-
-        switch(prop->mType) {
-            case aiPTI_String:
-                prop_val = PyUnicode_FromString(sval.data);
-                break;
-            case aiPTI_Float:
-                if(arr_size == 1) {
-                    prop_val = PyFloat_FromDouble(fval[0]);
-                } else {
-                    prop_val = PyList_New(arr_size);
-                    for(uint j=0; j<arr_size; j++) {
-                        PyList_SetItem(prop_val, j, PyFloat_FromDouble(fval[j]));
-                    }
-                }
-                break;
-            case aiPTI_Integer:
-                if(arr_size == 1) {
-                    prop_val = PyLong_FromLong(ival[0]);
-                } else {
-                    prop_val = PyList_New(arr_size);
-                    for(uint j=0; j<arr_size; j++) {
-                        PyList_SetItem(prop_val, j, PyLong_FromLong(ival[j]));
-                    }
-                }
-                break;
-             default:
-                prop_val = Py_None;
-                break;
-        }
-
-        PyObject *key = PyUnicode_FromString(get_prop_name(prop->mKey.data));
-        if (!key) {
-            Py_DECREF(props);
-            return NULL;
-        }
-        PyDict_SetItem(props, key, prop_val);
-        Py_DECREF(prop_val);
-        Py_DECREF(key); // Properly release the key object
-
+    // If py_value is still NULL after checks, it means the property was
+    // found but conversion failed or wasn't supported.
+    if (!py_value && !PyErr_Occurred()) {
+         Py_RETURN_NONE; // Property exists but we didn't convert it, return None.
     }
 
-    // Load Textures
-    struct aiString texture_path;
-    PyObject *texture_dict = PyDict_New();
-    enum aiTextureType TexTypes[13] = {
-        aiTextureType_NONE,
-        aiTextureType_DIFFUSE,
-        aiTextureType_SPECULAR,
-        aiTextureType_AMBIENT,
-        aiTextureType_EMISSIVE,
-        aiTextureType_HEIGHT,
-        aiTextureType_NORMALS,
-        aiTextureType_SHININESS,
-        aiTextureType_OPACITY,
-        aiTextureType_DISPLACEMENT,
-        aiTextureType_LIGHTMAP,
-        aiTextureType_REFLECTION,
-        aiTextureType_UNKNOWN,
-    };
-
-    for(int i=0; i<13; i++) {
-        uint tex_count = aiGetMaterialTextureCount(mat, TexTypes[i]);
-        if (tex_count < 1)
-            continue;
-
-        PyObject *textures = PyList_New(tex_count);
-        for(uint j=0; j<tex_count; j++) {
-            aiGetMaterialTexture(mat, TexTypes[i], j, &texture_path, NULL, NULL, NULL, NULL, NULL, NULL);
-            PyList_SetItem(textures, j, PyUnicode_FromString(texture_path.data));
-        }
-        PyDict_SetItem(texture_dict, PyLong_FromLong(TexTypes[i]), textures);
-    }
-
-    PyDict_SetItem(props, PyUnicode_FromString("TEXTURES"), texture_dict);
-    return props;
+    return py_value; // Return new reference (or NULL on error, or None)
 }
 
-static void process_meshes(Scene *py_scene, const struct aiScene *c_scene) {
-    uint num_meshes = c_scene->mNumMeshes;
+// --- Scene Processing Logic ---
 
-    py_scene->num_meshes = num_meshes;
-    py_scene->meshes = PyList_New(num_meshes);
+// Process materials from aiScene into a Python list of dictionaries.
+// Returns a new reference to the list, or NULL on error.
+static PyObject* process_materials(const struct aiScene *c_scene) {
+    unsigned int num_materials = c_scene->mNumMaterials;
+    PyObject *py_materials_list = PyList_New(num_materials);
+    if (!py_materials_list) return NULL;
 
-    for(uint i = 0; i < num_meshes; i++) {
-        struct aiMesh *m = c_scene->mMeshes[i];
-        Mesh *pymesh = (Mesh*)(MeshType.tp_alloc(&MeshType, 0));
-        Py_INCREF(pymesh);
+    for (unsigned int i = 0; i < num_materials; ++i) {
+        struct aiMaterial *mat = c_scene->mMaterials[i];
+        PyObject *mat_dict = PyDict_New();
+        if (!mat_dict) goto fail_mat_list;
 
-        pymesh->name = m->mName.data;
-        pymesh->num_vertices = m->mNumVertices;
-        pymesh->material_index = m->mMaterialIndex;
-
-        pymesh->vertices = list_from_vec3d(m->mVertices, m->mNumVertices);
-        pymesh->normals = m->mNormals != NULL ? list_from_vec3d(m->mNormals, m->mNumVertices) : Py_None;
-        pymesh->tangents = m->mTangents != NULL ? list_from_vec3d(m->mTangents, m->mNumVertices) : Py_None;
-        pymesh->bitangents = m->mTangents != NULL ? list_from_vec3d(m->mBitangents, m->mNumVertices) : Py_None;
-
-        pymesh->num_uv_components = PyList_New(0);
-        for(uint k=0; k<AI_MAX_NUMBER_OF_TEXTURECOORDS; k++) {
-            if (m->mTextureCoords[k] != NULL)
-                PyList_Append(pymesh->num_uv_components, PyLong_FromUnsignedLong(m->mNumUVComponents[k]));
-        }
-
-        pymesh->texcoords = PyList_New(0);
-        for(uint k=0; k<AI_MAX_NUMBER_OF_TEXTURECOORDS; k++) {
-            if (m->mTextureCoords[k] != NULL) {
-                PyList_Append(pymesh->texcoords, list_from_vec3d(m->mTextureCoords[k], m->mNumVertices));
+        // Iterate through material properties
+        for (unsigned int p = 0; p < mat->mNumProperties; ++p) {
+            struct aiMaterialProperty *prop = mat->mProperties[p];
+            // Use the original key directly
+            PyObject *py_key = PyUnicode_FromString(prop->mKey.data);
+            if (!py_key) {
+                Py_DECREF(mat_dict);
+                goto fail_mat_list;
             }
-        }
 
-        pymesh->colors = PyList_New(0);
-        for(uint l=0; l<AI_MAX_NUMBER_OF_COLOR_SETS; l++) {
-            if (m->mColors[l] != NULL) {
-                PyList_Append(pymesh->colors, list_from_col4d(m->mColors[l], m->mNumVertices));
+            PyObject *py_value = get_material_property(mat, prop->mKey.data, prop->mSemantic, prop->mIndex);
+            if (!py_value) { // Error occurred in get_material_property
+                Py_DECREF(py_key);
+                Py_DECREF(mat_dict);
+                goto fail_mat_list;
             }
+
+            // Only add if value is not None (unless None signifies absence vs error)
+            // Let's include None values for completeness.
+            if (PyDict_SetItem(mat_dict, py_key, py_value) < 0) {
+                Py_DECREF(py_key);
+                Py_DECREF(py_value);
+                Py_DECREF(mat_dict);
+                goto fail_mat_list;
+            }
+            Py_DECREF(py_key);   // Dereference temporary key
+            Py_DECREF(py_value); // Dereference value (SetItem increments)
         }
 
-        pymesh->indices = PyList_New(m->mNumFaces);
-        for(uint j=0; j < m->mNumFaces; j++) {
-            PyList_SetItem(pymesh->indices, j, tuple_from_face(&m->mFaces[j]));
-        }        
+        // Add textures separately for clarity
+        PyObject *textures_dict = PyDict_New();
+        if (!textures_dict) {
+            Py_DECREF(mat_dict);
+            goto fail_mat_list;
+        }
 
-        PyList_SetItem(py_scene->meshes, i, (PyObject*)pymesh);
+        for (int tt = aiTextureType_NONE; tt <= aiTextureType_UNKNOWN; ++tt) {
+             enum aiTextureType tex_type = (enum aiTextureType)tt;
+             unsigned int tex_count = aiGetMaterialTextureCount(mat, tex_type);
+             if (tex_count == 0) continue;
+
+             PyObject *texture_list = PyList_New(tex_count);
+             if (!texture_list) {
+                 Py_DECREF(textures_dict);
+                 Py_DECREF(mat_dict);
+                 goto fail_mat_list;
+             }
+
+             for(unsigned int tex_idx = 0; tex_idx < tex_count; ++tex_idx) {
+                 struct aiString path;
+                 // We only retrieve the path here. Other details could be added.
+                 aiReturn ret = aiGetMaterialTexture(mat, tex_type, tex_idx, &path,
+                                                     NULL, NULL, NULL, NULL, NULL, NULL);
+                 if (ret == aiReturn_SUCCESS) {
+                     PyObject *py_path = PyUnicode_FromString(path.data);
+                     if (!py_path) {
+                         Py_DECREF(texture_list);
+                         Py_DECREF(textures_dict);
+                         Py_DECREF(mat_dict);
+                         goto fail_mat_list;
+                     }
+                     PyList_SET_ITEM(texture_list, tex_idx, py_path); // Steals ref
+                 } else {
+                     // Handle error or insert None? Let's skip on error.
+                     PyErr_Format(PyExc_RuntimeError, "Failed to get texture path for type %d index %d", tt, tex_idx);
+                     Py_DECREF(texture_list);
+                     Py_DECREF(textures_dict);
+                     Py_DECREF(mat_dict);
+                     goto fail_mat_list;
+                 }
+             }
+             // Use the texture type enum value as the key
+             PyObject *py_tex_type_key = PyLong_FromLong(tex_type);
+             if (!py_tex_type_key) {
+                 Py_DECREF(texture_list); // List contains owned refs now
+                 Py_DECREF(textures_dict);
+                 Py_DECREF(mat_dict);
+                 goto fail_mat_list;
+             }
+             if (PyDict_SetItem(textures_dict, py_tex_type_key, texture_list) < 0) {
+                 Py_DECREF(py_tex_type_key);
+                 Py_DECREF(texture_list);
+                 Py_DECREF(textures_dict);
+                 Py_DECREF(mat_dict);
+                 goto fail_mat_list;
+             }
+             Py_DECREF(py_tex_type_key);
+             Py_DECREF(texture_list); // SetItem increments ref
+        }
+
+        // Add the textures dictionary to the main material dictionary
+        PyObject *textures_key = PyUnicode_FromString("TEXTURES");
+         if (!textures_key) {
+             Py_DECREF(textures_dict);
+             Py_DECREF(mat_dict);
+             goto fail_mat_list;
+         }
+        if (PyDict_SetItem(mat_dict, textures_key, textures_dict) < 0) {
+            Py_DECREF(textures_key);
+            Py_DECREF(textures_dict);
+            Py_DECREF(mat_dict);
+            goto fail_mat_list;
+        }
+        Py_DECREF(textures_key);
+        Py_DECREF(textures_dict); // SetItem increments ref
+
+        // PyList_SetItem steals the reference to mat_dict
+        if (PyList_SetItem(py_materials_list, i, mat_dict) < 0) {
+            Py_DECREF(mat_dict); // Decref if SetItem failed
+            goto fail_mat_list;
+        }
     }
+
+    return py_materials_list; // Success
+
+fail_mat_list:
+    Py_DECREF(py_materials_list); // Decrement ref count on the main list
+    return NULL; // Error
 }
 
-static void process_materials(Scene *py_scene, const struct aiScene *c_scene) {
+
+// Process meshes from aiScene into a Python list of Mesh objects.
+// Returns a new reference to the list, or NULL on error.
+static PyObject* process_meshes(const struct aiScene *c_scene) {
+    unsigned int num_meshes = c_scene->mNumMeshes;
+    PyObject *py_meshes_list = PyList_New(num_meshes);
+    if (!py_meshes_list) return NULL;
+
+    for (unsigned int i = 0; i < num_meshes; ++i) {
+        struct aiMesh *c_mesh = c_scene->mMeshes[i];
+        Mesh *py_mesh = (Mesh *)MeshType.tp_alloc(&MeshType, 0); // Create new Mesh object
+        if (!py_mesh) goto fail_mesh_list;
+
+        // --- Basic Info ---
+        py_mesh->name = PyUnicode_FromString(c_mesh->mName.data);
+        if (!py_mesh->name) { Py_DECREF(py_mesh); goto fail_mesh_list; }
+        py_mesh->num_vertices = c_mesh->mNumVertices;
+        py_mesh->num_faces = c_mesh->mNumFaces;
+        py_mesh->material_index = c_mesh->mMaterialIndex;
+
+        size_t buffer_size; // Used for calculating allocation sizes
+        Py_ssize_t itemsize; // For memoryview
+
+        // --- Indices ---
+        // Calculate total number of indices assuming triangulation (most common case)
+        // If aiProcess_Triangulate is not used, this needs adjustment or checking mNumIndices per face.
+        py_mesh->num_indices = 0;
+        for (unsigned int f = 0; f < c_mesh->mNumFaces; ++f) {
+            // Ensure faces are triangles if assuming flat index buffer
+             if (c_mesh->mFaces[f].mNumIndices != 3) {
+                 // Consider raising an error if triangulation wasn't enforced by flags
+                 PyErr_SetString(PyExc_ValueError, "Mesh processing assumes triangulated faces (use aiProcess_Triangulate flag).");
+                 Py_DECREF(py_mesh);
+                 goto fail_mesh_list;
+             }
+            py_mesh->num_indices += c_mesh->mFaces[f].mNumIndices;
+        }
+
+        if (py_mesh->num_indices > 0) {
+            buffer_size = py_mesh->num_indices * sizeof(unsigned int);
+            itemsize = sizeof(unsigned int);
+            py_mesh->c_indices = (unsigned int*)malloc(buffer_size);
+            if (!py_mesh->c_indices) { PyErr_NoMemory(); Py_DECREF(py_mesh); goto fail_mesh_list; }
+
+            unsigned int idx_count = 0;
+            for (unsigned int f = 0; f < c_mesh->mNumFaces; ++f) {
+                memcpy(py_mesh->c_indices + idx_count, c_mesh->mFaces[f].mIndices, c_mesh->mFaces[f].mNumIndices * sizeof(unsigned int));
+                idx_count += c_mesh->mFaces[f].mNumIndices;
+            }
+            // Format 'I' is standard unsigned int
+            py_mesh->indices = create_memoryview(py_mesh->c_indices, buffer_size, "I", itemsize);
+            if (!py_mesh->indices) { Py_DECREF(py_mesh); goto fail_mesh_list; }
+        } else {
+            Py_INCREF(Py_None); py_mesh->indices = Py_None; // No indices
+        }
+
+
+        // --- Vertices ---
+        if (c_mesh->mVertices) {
+            buffer_size = py_mesh->num_vertices * 3 * sizeof(float);
+            itemsize = sizeof(float);
+            py_mesh->c_vertices = (float*)malloc(buffer_size);
+            if (!py_mesh->c_vertices) { PyErr_NoMemory(); Py_DECREF(py_mesh); goto fail_mesh_list; }
+            memcpy(py_mesh->c_vertices, c_mesh->mVertices, buffer_size);
+            // Format 'f' is standard float
+            py_mesh->vertices = create_memoryview(py_mesh->c_vertices, buffer_size, "f", itemsize);
+             if (!py_mesh->vertices) { Py_DECREF(py_mesh); goto fail_mesh_list; }
+        } else {
+             Py_INCREF(Py_None); py_mesh->vertices = Py_None; // Should not happen for valid mesh
+        }
+
+        // --- Normals ---
+        if (c_mesh->mNormals) {
+            buffer_size = py_mesh->num_vertices * 3 * sizeof(float);
+            itemsize = sizeof(float);
+            py_mesh->c_normals = (float*)malloc(buffer_size);
+            if (!py_mesh->c_normals) { PyErr_NoMemory(); Py_DECREF(py_mesh); goto fail_mesh_list; }
+            memcpy(py_mesh->c_normals, c_mesh->mNormals, buffer_size);
+            py_mesh->normals = create_memoryview(py_mesh->c_normals, buffer_size, "f", itemsize);
+             if (!py_mesh->normals) { Py_DECREF(py_mesh); goto fail_mesh_list; }
+        } else {
+             Py_INCREF(Py_None); py_mesh->normals = Py_None;
+        }
+
+        // --- Tangents ---
+        if (c_mesh->mTangents) {
+            buffer_size = py_mesh->num_vertices * 3 * sizeof(float);
+            itemsize = sizeof(float);
+            py_mesh->c_tangents = (float*)malloc(buffer_size);
+            if (!py_mesh->c_tangents) { PyErr_NoMemory(); Py_DECREF(py_mesh); goto fail_mesh_list; }
+            memcpy(py_mesh->c_tangents, c_mesh->mTangents, buffer_size);
+            py_mesh->tangents = create_memoryview(py_mesh->c_tangents, buffer_size, "f", itemsize);
+             if (!py_mesh->tangents) { Py_DECREF(py_mesh); goto fail_mesh_list; }
+        } else {
+             Py_INCREF(Py_None); py_mesh->tangents = Py_None;
+        }
+
+        // --- Bitangents ---
+        if (c_mesh->mBitangents) {
+            buffer_size = py_mesh->num_vertices * 3 * sizeof(float);
+            itemsize = sizeof(float);
+            py_mesh->c_bitangents = (float*)malloc(buffer_size);
+            if (!py_mesh->c_bitangents) { PyErr_NoMemory(); Py_DECREF(py_mesh); goto fail_mesh_list; }
+            memcpy(py_mesh->c_bitangents, c_mesh->mBitangents, buffer_size);
+            py_mesh->bitangents = create_memoryview(py_mesh->c_bitangents, buffer_size, "f", itemsize);
+             if (!py_mesh->bitangents) { Py_DECREF(py_mesh); goto fail_mesh_list; }
+        } else {
+             Py_INCREF(Py_None); py_mesh->bitangents = Py_None;
+        }
+
+        // --- Colors ---
+        py_mesh->num_color_sets = 0;
+        for(unsigned int k=0; k < AI_MAX_NUMBER_OF_COLOR_SETS; ++k) {
+            if(c_mesh->mColors[k] != NULL) py_mesh->num_color_sets++; else break;
+        }
+
+        if (py_mesh->num_color_sets > 0) {
+            py_mesh->colors = PyList_New(py_mesh->num_color_sets);
+            if (!py_mesh->colors) { Py_DECREF(py_mesh); goto fail_mesh_list; }
+            py_mesh->c_colors = (float**)calloc(py_mesh->num_color_sets, sizeof(float*)); // Use calloc for NULL init
+             if (!py_mesh->c_colors) { PyErr_NoMemory(); Py_DECREF(py_mesh); goto fail_mesh_list; }
+
+            for(unsigned int k=0; k < py_mesh->num_color_sets; ++k) {
+                 // Colors are aiColor4D (r,g,b,a) -> 4 floats
+                 buffer_size = py_mesh->num_vertices * 4 * sizeof(float);
+                 itemsize = sizeof(float);
+                 py_mesh->c_colors[k] = (float*)malloc(buffer_size);
+                 if (!py_mesh->c_colors[k]) { PyErr_NoMemory(); Py_DECREF(py_mesh); goto fail_mesh_list; }
+                 // Need to copy component-wise from aiColor4D
+                 for(unsigned int v=0; v < py_mesh->num_vertices; ++v) {
+                     py_mesh->c_colors[k][v*4 + 0] = c_mesh->mColors[k][v].r;
+                     py_mesh->c_colors[k][v*4 + 1] = c_mesh->mColors[k][v].g;
+                     py_mesh->c_colors[k][v*4 + 2] = c_mesh->mColors[k][v].b;
+                     py_mesh->c_colors[k][v*4 + 3] = c_mesh->mColors[k][v].a;
+                 }
+                 PyObject *memview = create_memoryview(py_mesh->c_colors[k], buffer_size, "f", itemsize);
+                 if (!memview) { Py_DECREF(py_mesh); goto fail_mesh_list; }
+                 PyList_SET_ITEM(py_mesh->colors, k, memview); // Steals ref
+            }
+        } else {
+             Py_INCREF(Py_None); py_mesh->colors = Py_None;
+        }
+
+        // --- Texture Coordinates ---
+        py_mesh->num_texcoord_sets = 0;
+        for(unsigned int k=0; k < AI_MAX_NUMBER_OF_TEXTURECOORDS; ++k) {
+            if(c_mesh->mTextureCoords[k] != NULL) py_mesh->num_texcoord_sets++; else break;
+        }
+
+        if (py_mesh->num_texcoord_sets > 0) {
+            py_mesh->texcoords = PyList_New(py_mesh->num_texcoord_sets);
+             if (!py_mesh->texcoords) { Py_DECREF(py_mesh); goto fail_mesh_list; }
+            py_mesh->num_uv_components = PyList_New(py_mesh->num_texcoord_sets);
+             if (!py_mesh->num_uv_components) { Py_DECREF(py_mesh); goto fail_mesh_list; }
+
+            py_mesh->c_texcoords = (float**)calloc(py_mesh->num_texcoord_sets, sizeof(float*));
+             if (!py_mesh->c_texcoords) { PyErr_NoMemory(); Py_DECREF(py_mesh); goto fail_mesh_list; }
+            py_mesh->c_num_uv_components = (unsigned int*)malloc(py_mesh->num_texcoord_sets * sizeof(unsigned int));
+             if (!py_mesh->c_num_uv_components) { PyErr_NoMemory(); Py_DECREF(py_mesh); goto fail_mesh_list; }
+
+
+            for(unsigned int k=0; k < py_mesh->num_texcoord_sets; ++k) {
+                 unsigned int ncomp = c_mesh->mNumUVComponents[k]; // 1, 2 or 3
+                 py_mesh->c_num_uv_components[k] = ncomp;
+                 PyObject *comp_obj = PyLong_FromUnsignedLong(ncomp);
+                 if (!comp_obj) { Py_DECREF(py_mesh); goto fail_mesh_list; }
+                 PyList_SET_ITEM(py_mesh->num_uv_components, k, comp_obj); // Steals ref
+
+                 buffer_size = py_mesh->num_vertices * ncomp * sizeof(float);
+                 itemsize = sizeof(float);
+                 py_mesh->c_texcoords[k] = (float*)malloc(buffer_size);
+                 if (!py_mesh->c_texcoords[k]) { PyErr_NoMemory(); Py_DECREF(py_mesh); goto fail_mesh_list; }
+
+                 // Copy from aiVector3D, taking only ncomp components
+                 for(unsigned int v=0; v < py_mesh->num_vertices; ++v) {
+                    memcpy(py_mesh->c_texcoords[k] + v * ncomp, &(c_mesh->mTextureCoords[k][v].x), ncomp * sizeof(float));
+                 }
+
+                 PyObject *memview = create_memoryview(py_mesh->c_texcoords[k], buffer_size, "f", itemsize);
+                 if (!memview) { Py_DECREF(py_mesh); goto fail_mesh_list; }
+                 PyList_SET_ITEM(py_mesh->texcoords, k, memview); // Steals ref
+            }
+        } else {
+             Py_INCREF(Py_None); py_mesh->texcoords = Py_None;
+             py_mesh->num_uv_components = PyList_New(0); // Empty list if no texcoords
+             if (!py_mesh->num_uv_components) { Py_DECREF(py_mesh); goto fail_mesh_list; }
+        }
+
+
+        // --- Add Mesh to List ---
+        // PyList_SetItem steals the reference, no DECREF needed on success
+        if (PyList_SetItem(py_meshes_list, i, (PyObject*)py_mesh) < 0) {
+             Py_DECREF(py_mesh); // Decref if SetItem failed
+             goto fail_mesh_list;
+        }
+    }
+
+    return py_meshes_list; // Success
+
+fail_mesh_list:
+    Py_DECREF(py_meshes_list); // Clean up the main list on error
+    return NULL;
+}
+
+
+// --- Module Methods ---
+
+PyDoc_STRVAR(import_file_doc,
+"import_file(filename: str, flags: int) -> Scene\n"
+"--\n\n"
+"Imports the 3D model from the given filename.\n\n"
+"Args:\n"
+"    filename: Path to the model file.\n"
+"    flags: Post-processing flags (e.g., Process_Triangulate | Process_GenNormals).\n\n"
+"Returns:\n"
+"    A Scene object containing the loaded data.\n\n"
+"Raises:\n"
+"    FileNotFoundError: If the file does not exist.\n"
+"    RuntimeError: If Assimp fails to load the file.\n"
+"    MemoryError: If memory allocation fails.\n"
+"    ValueError: If arguments are invalid or mesh data is inconsistent (e.g., non-triangulated when expected).");
+
+static PyObject* py_import_file(PyObject *self, PyObject *args) {
+    const char* filename = NULL;
+    unsigned int flags = 0;
+    const struct aiScene *c_scene = NULL;
+    Scene *py_scene = NULL; // The Python Scene object we will return
+
+    if (!PyArg_ParseTuple(args, "sI:import_file", &filename, &flags)) {
+        // Error already set by PyArg_ParseTuple
+        return NULL;
+    }
+
+    // Basic check if file exists before calling Assimp
+    // Use Python's built-in os.path.exists for better cross-platform compatibility?
+    // For C extension, fopen is reasonable.
+    FILE *f = fopen(filename, "rb"); // Use "rb" for binary check
+    if (!f) {
+        // Map C's file not found to Python's FileNotFoundError
+        // Note: Python 3.3+ needed for FileNotFoundError. Use IOError for older.
+        PyErr_SetString(PyExc_FileNotFoundError, filename);
+        return NULL;
+    }
+    fclose(f);
+
+    // Import the file using Assimp
+    // aiProcess_Triangulate is highly recommended for predictable index buffers
+    // aiProcess_JoinIdenticalVertices is useful for reducing vertex count
+    // aiProcess_CalcTangentSpace is needed if you require tangents/bitangents
+    // aiProcess_GenSmoothNormals or aiProcess_GenNormals if normals are missing
+    // aiProcess_FlipUVs can be important depending on texture conventions
+    c_scene = aiImportFile(filename, flags);
+
+    // Check for Assimp loading errors
+    if (!c_scene || !c_scene->mRootNode || (c_scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE)) {
+        PyErr_Format(PyExc_RuntimeError, "Assimp error loading '%s': %s", filename, aiGetErrorString());
+        aiReleaseImport(c_scene); // Release even if partially loaded
+        return NULL;
+    }
+
+    // Create the Python Scene object
+    py_scene = (Scene *)SceneType.tp_alloc(&SceneType, 0);
+    if (!py_scene) {
+        aiReleaseImport(c_scene);
+        return NULL; // Error already set (likely MemoryError)
+    }
+
+    py_scene->num_meshes = c_scene->mNumMeshes;
     py_scene->num_materials = c_scene->mNumMaterials;
-    py_scene->materials = PyList_New(c_scene->mNumMaterials);
-    for(uint i=0; i<c_scene->mNumMaterials; i++) {
-        PyList_SetItem(py_scene->materials, i, props_from_material(c_scene->mMaterials[i]));
-    }
-}
 
-// - Assimp Wrapper for aiImportFile
-PyDoc_STRVAR(import_doc,
-"ImportFile(filename, flags) -> Scene\n"
-"\n"
-"Import the given filename with the provided post-processing flags.\n"
-);
-
-static PyObject* ImportFile(PyObject *self, PyObject *args) {
-    const char* filename;
-    uint flags;
-    if(!PyArg_ParseTuple(args, "si", &filename, &flags)) {
-        PyErr_SetString(PyExc_ValueError, "Invalid Arguments! Expected (str, int)");
-        return (PyObject*)NULL;
-    }
-    // Check if given filename exists
-    FILE *f = fopen(filename, "r");
-    if(f) {
-        fclose(f);
-    } else {
-        PyErr_SetString(PyExc_ValueError, "File does not exist!");
-        return (PyObject*)NULL;
+    // Process Meshes
+    py_scene->meshes = process_meshes(c_scene);
+    if (!py_scene->meshes) {
+        goto fail; // Error occurred during mesh processing
     }
 
-    // Load the scene
-    const struct aiScene *scene = aiImportFile(filename, flags);
-    if (!scene || !scene->mRootNode) {
-        char err[1024];
-        sprintf(err, "Assimp error: %s", aiGetErrorString());
-        PyErr_SetString(PyExc_ValueError, err);
-        return (PyObject*)NULL;
+    // Process Materials
+    py_scene->materials = process_materials(c_scene);
+    if (!py_scene->materials) {
+        goto fail; // Error occurred during material processing
     }
 
-    Scene *pyscene = (Scene*)(SceneType.tp_alloc(&SceneType, 0));
-    process_meshes(pyscene, scene);
-    process_materials(pyscene, scene);
-    aiReleaseImport(scene);
-    return (PyObject*)pyscene;
+    // Success! Release the C scene and return the Python scene
+    aiReleaseImport(c_scene);
+    return (PyObject *)py_scene;
+
+fail:
+    // Cleanup on error
+    aiReleaseImport(c_scene);
+    Py_XDECREF(py_scene); // Use XDECREF as py_scene might be NULL if allocation failed
+    return NULL;
 }
 
 
-// -- Module Initialization
-int Initialize_Types(PyObject* module) {
-    if (PyType_Ready(&MeshType) < 0)
-    {
-        return -1;
-    }
-    Py_INCREF(&MeshType);
-    PyModule_AddObject(module, "Mesh", (PyObject *)&MeshType);
+// --- Module Definition ---
 
-    if (PyType_Ready(&SceneType) < 0)
-    {
-        return -1;
-    }
-    Py_INCREF(&SceneType);
-    PyModule_AddObject(module, "Scene", (PyObject *)&SceneType);
-
-    return 1;
-}
-
-void Initialize_Constants(PyObject *module) {
-    /* Texture Types */
-    PyModule_AddIntConstant(module, "TextureType_NONE", aiTextureType_NONE);
-    PyModule_AddIntConstant(module, "TextureType_DIFFUSE", aiTextureType_DIFFUSE);
-    PyModule_AddIntConstant(module, "TextureType_SPECULAR", aiTextureType_SPECULAR);
-    PyModule_AddIntConstant(module, "TextureType_AMBIENT", aiTextureType_AMBIENT);
-    PyModule_AddIntConstant(module, "TextureType_EMISSIVE", aiTextureType_EMISSIVE);
-    PyModule_AddIntConstant(module, "TextureType_HEIGHT", aiTextureType_HEIGHT);
-    PyModule_AddIntConstant(module, "TextureType_NORMALS", aiTextureType_NORMALS);
-    PyModule_AddIntConstant(module, "TextureType_SHININESS", aiTextureType_SHININESS);
-    PyModule_AddIntConstant(module, "TextureType_OPACITY", aiTextureType_OPACITY);
-    PyModule_AddIntConstant(module, "TextureType_DISPLACEMENT", aiTextureType_DISPLACEMENT);
-    PyModule_AddIntConstant(module, "TextureType_LIGHTMAP", aiTextureType_LIGHTMAP);
-    PyModule_AddIntConstant(module, "TextureType_REFLECTION", aiTextureType_REFLECTION);
-    PyModule_AddIntConstant(module, "TextureType_UNKNOWN", aiTextureType_UNKNOWN);
-
-    /* Add postprocess steps */
-    PyModule_AddIntConstant(module, "Process_CalcTangentSpace", aiProcess_CalcTangentSpace);
-    PyModule_AddIntConstant(module, "Process_JoinIdenticalVertices", aiProcess_JoinIdenticalVertices);
-    PyModule_AddIntConstant(module, "Process_MakeLeftHanded", aiProcess_MakeLeftHanded);
-    PyModule_AddIntConstant(module, "Process_Triangulate", aiProcess_Triangulate);
-    PyModule_AddIntConstant(module, "Process_RemoveComponent", aiProcess_RemoveComponent);
-    PyModule_AddIntConstant(module, "Process_GenNormals", aiProcess_GenNormals);
-    PyModule_AddIntConstant(module, "Process_GenSmoothNormals", aiProcess_GenSmoothNormals);
-    PyModule_AddIntConstant(module, "Process_SplitLargeMeshes", aiProcess_SplitLargeMeshes);
-    PyModule_AddIntConstant(module, "Process_PreTransformVertices", aiProcess_PreTransformVertices);
-    PyModule_AddIntConstant(module, "Process_LimitBoneWeights", aiProcess_LimitBoneWeights);
-    PyModule_AddIntConstant(module, "Process_ValidateDataStructure", aiProcess_ValidateDataStructure);
-    PyModule_AddIntConstant(module, "Process_ImproveCacheLocality", aiProcess_ImproveCacheLocality);
-    PyModule_AddIntConstant(module, "Process_RemoveRedundantMaterials", aiProcess_RemoveRedundantMaterials);
-    PyModule_AddIntConstant(module, "Process_FixInfacingNormals", aiProcess_FixInfacingNormals);
-    PyModule_AddIntConstant(module, "Process_SortByPType", aiProcess_SortByPType);
-    PyModule_AddIntConstant(module, "Process_FindDegenerates", aiProcess_FindDegenerates);
-    PyModule_AddIntConstant(module, "Process_FindInvalidData", aiProcess_FindInvalidData);
-    PyModule_AddIntConstant(module, "Process_GenUVCoords", aiProcess_GenUVCoords);
-    PyModule_AddIntConstant(module, "Process_TransformUVCoords", aiProcess_TransformUVCoords);
-    PyModule_AddIntConstant(module, "Process_FindInstances", aiProcess_FindInstances);
-    PyModule_AddIntConstant(module, "Process_OptimizeMeshes", aiProcess_OptimizeMeshes);
-    PyModule_AddIntConstant(module, "Process_OptimizeGraph", aiProcess_OptimizeGraph);
-    PyModule_AddIntConstant(module, "Process_FlipUVs", aiProcess_FlipUVs);
-    PyModule_AddIntConstant(module, "Process_FlipWindingOrder", aiProcess_FlipWindingOrder);
-    PyModule_AddIntConstant(module, "Process_SplitByBoneCount", aiProcess_SplitByBoneCount);
-    PyModule_AddIntConstant(module, "Process_Debone", aiProcess_Debone);
-    PyModule_AddIntConstant(module, "Process_GlobalScale", aiProcess_GlobalScale);
-}
-
-static PyMethodDef assimp_py_meths[] = {
-    {"ImportFile", (PyCFunction)ImportFile, METH_VARARGS, import_doc},
-    {NULL, NULL, 0, NULL},
+static PyMethodDef assimp_py_methods[] = {
+    {"import_file", py_import_file, METH_VARARGS, import_file_doc},
+    {NULL, NULL, 0, NULL} /* Sentinel */
 };
 
-static PyModuleDef assimp_py_mod = {
-  PyModuleDef_HEAD_INIT,
-  "assimp_py",
-  "Python C API to ASSIMP Library",
-  -1,
-   assimp_py_meths,
+// Function to add integer constants to the module
+static int add_int_constant(PyObject *module, const char *name, long value) {
+    if (PyModule_AddIntConstant(module, name, value) < 0) {
+        fprintf(stderr, "Failed to add constant: %s\n", name);
+        return -1;
+    }
+    return 0;
+}
+
+
+static PyModuleDef assimp_py_module = {
+    PyModuleDef_HEAD_INIT,
+    .m_name = "assimp_py",
+    .m_doc = "Python C bindings for the Assimp library",
+    .m_size = -1, // No global state for this module
+    .m_methods = assimp_py_methods,
 };
 
-PyMODINIT_FUNC PyInit_assimp_py() {
-    PyObject *mod = PyModule_Create(&assimp_py_mod);
-    Initialize_Constants(mod);
-    if(Initialize_Types(mod) < 0) {
+PyMODINIT_FUNC PyInit_assimp_py(void) {
+    PyObject *module = NULL;
+
+    // Initialize Types
+    if (PyType_Ready(&MeshType) < 0) return NULL;
+    if (PyType_Ready(&SceneType) < 0) return NULL;
+
+    // Create Module
+    module = PyModule_Create(&assimp_py_module);
+    if (!module) {
+        Py_DECREF(&MeshType); // Need cleanup if module creation fails
+        Py_DECREF(&SceneType);
         return NULL;
     }
-    return mod;
+
+    // Add Types to Module
+    Py_INCREF(&MeshType); // Module takes ownership
+    if (PyModule_AddObject(module, "Mesh", (PyObject *)&MeshType) < 0) {
+        Py_DECREF(&MeshType);
+        Py_DECREF(&SceneType);
+        Py_DECREF(module);
+        return NULL;
+    }
+
+    Py_INCREF(&SceneType); // Module takes ownership
+    if (PyModule_AddObject(module, "Scene", (PyObject *)&SceneType) < 0) {
+        Py_DECREF(&MeshType);
+        Py_DECREF(&SceneType);
+        Py_DECREF(module);
+        return NULL;
+    }
+
+    // Add Constants (Post-processing flags) - Abbreviated list for example
+    int error = 0;
+    error |= add_int_constant(module, "Process_CalcTangentSpace", aiProcess_CalcTangentSpace);
+    error |= add_int_constant(module, "Process_JoinIdenticalVertices", aiProcess_JoinIdenticalVertices);
+    error |= add_int_constant(module, "Process_MakeLeftHanded", aiProcess_MakeLeftHanded);
+    error |= add_int_constant(module, "Process_Triangulate", aiProcess_Triangulate);
+    error |= add_int_constant(module, "Process_RemoveComponent", aiProcess_RemoveComponent);
+    error |= add_int_constant(module, "Process_GenNormals", aiProcess_GenNormals);
+    error |= add_int_constant(module, "Process_GenSmoothNormals", aiProcess_GenSmoothNormals);
+    error |= add_int_constant(module, "Process_SplitLargeMeshes", aiProcess_SplitLargeMeshes);
+    error |= add_int_constant(module, "Process_PreTransformVertices", aiProcess_PreTransformVertices);
+    error |= add_int_constant(module, "Process_LimitBoneWeights", aiProcess_LimitBoneWeights);
+    error |= add_int_constant(module, "Process_ValidateDataStructure", aiProcess_ValidateDataStructure);
+    error |= add_int_constant(module, "Process_ImproveCacheLocality", aiProcess_ImproveCacheLocality);
+    error |= add_int_constant(module, "Process_RemoveRedundantMaterials", aiProcess_RemoveRedundantMaterials);
+    error |= add_int_constant(module, "Process_FixInfacingNormals", aiProcess_FixInfacingNormals);
+    error |= add_int_constant(module, "Process_SortByPType", aiProcess_SortByPType);
+    error |= add_int_constant(module, "Process_FindDegenerates", aiProcess_FindDegenerates);
+    error |= add_int_constant(module, "Process_FindInvalidData", aiProcess_FindInvalidData);
+    error |= add_int_constant(module, "Process_GenUVCoords", aiProcess_GenUVCoords);
+    error |= add_int_constant(module, "Process_TransformUVCoords", aiProcess_TransformUVCoords);
+    error |= add_int_constant(module, "Process_FindInstances", aiProcess_FindInstances);
+    error |= add_int_constant(module, "Process_OptimizeMeshes", aiProcess_OptimizeMeshes);
+    error |= add_int_constant(module, "Process_OptimizeGraph", aiProcess_OptimizeGraph);
+    error |= add_int_constant(module, "Process_FlipUVs", aiProcess_FlipUVs);
+    error |= add_int_constant(module, "Process_FlipWindingOrder", aiProcess_FlipWindingOrder);
+    error |= add_int_constant(module, "Process_SplitByBoneCount", aiProcess_SplitByBoneCount);
+    error |= add_int_constant(module, "Process_Debone", aiProcess_Debone);
+    error |= add_int_constant(module, "Process_GlobalScale", aiProcess_GlobalScale);
+    // Add Texture Type constants
+    error |= add_int_constant(module, "TextureType_NONE", aiTextureType_NONE);
+    error |= add_int_constant(module, "TextureType_DIFFUSE", aiTextureType_DIFFUSE);
+    error |= add_int_constant(module, "TextureType_SPECULAR", aiTextureType_SPECULAR);
+    error |= add_int_constant(module, "TextureType_AMBIENT", aiTextureType_AMBIENT);
+    error |= add_int_constant(module, "TextureType_EMISSIVE", aiTextureType_EMISSIVE);
+    error |= add_int_constant(module, "TextureType_HEIGHT", aiTextureType_HEIGHT);
+    error |= add_int_constant(module, "TextureType_NORMALS", aiTextureType_NORMALS);
+    error |= add_int_constant(module, "TextureType_SHININESS", aiTextureType_SHININESS);
+    error |= add_int_constant(module, "TextureType_OPACITY", aiTextureType_OPACITY);
+    error |= add_int_constant(module, "TextureType_DISPLACEMENT", aiTextureType_DISPLACEMENT);
+    error |= add_int_constant(module, "TextureType_LIGHTMAP", aiTextureType_LIGHTMAP);
+    error |= add_int_constant(module, "TextureType_REFLECTION", aiTextureType_REFLECTION);
+    error |= add_int_constant(module, "TextureType_UNKNOWN", aiTextureType_UNKNOWN);
+
+
+    if (error < 0) {
+        // Cleanup if adding constants failed
+        Py_DECREF(&MeshType);
+        Py_DECREF(&SceneType);
+        Py_DECREF(module);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to initialize assimp_py constants");
+        return NULL;
+    }
+
+
+    return module;
 }

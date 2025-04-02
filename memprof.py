@@ -12,8 +12,9 @@ def func(model):
     post_flags = (
         assimp_py.Process_GenNormals | assimp_py.Process_CalcTangentSpace
     )
-    scn = assimp_py.ImportFile(str(model.absolute()), post_flags)
-    # pprint(scn.materials)
+    scn = assimp_py.import_file(str(model.absolute()), post_flags)
+    pprint(scn.materials)
+    print(scn.meshes[-1].vertices)
     del scn
 
 func(model_a)
