@@ -52,18 +52,30 @@ static int Mesh_init(Mesh *self, PyObject *args, PyObject *kwds) {
     self->num_vertices = 0;
     self->material_index = 0;
 
+    Py_INCREF(Py_None);
     self->indices = Py_None;
+    Py_INCREF(Py_None);
     self->vertices = Py_None;
+    Py_INCREF(Py_None);
     self->normals = Py_None;
+    Py_INCREF(Py_None);
     self->tangents = Py_None;
+    Py_INCREF(Py_None);
     self->bitangents = Py_None;
+    Py_INCREF(Py_None);
+    self->num_uv_components = Py_None;
 
-    return 1;
+    return 0;
 }
 
 static void Mesh_dealloc(Mesh *self) {
-//    Py_CLEAR(self->vertices);
-    Py_TYPE(self)->tp_dealloc((PyObject*)self);
+    Py_CLEAR(self->indices);
+    Py_CLEAR(self->vertices);
+    Py_CLEAR(self->normals);
+    Py_CLEAR(self->tangents);
+    Py_CLEAR(self->bitangents);
+    Py_CLEAR(self->num_uv_components);
+    Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 static PyTypeObject MeshType = {
@@ -91,18 +103,20 @@ typedef struct {
 } Scene;
 
 static int Scene_init(Scene *scene, PyObject *args, PyObject *kwds) {
+    Py_INCREF(Py_None);
     scene->meshes = Py_None;
+    Py_INCREF(Py_None);
     scene->materials = Py_None;
 
     scene->num_meshes = 0;
     scene->num_materials = 0;
-    return 1;
+    return 0;
 }
 
-static void Scene_dealloc(Scene *scene) {
-    Py_CLEAR(scene->meshes);
-    Py_CLEAR(scene->materials);
-    Py_TYPE(scene)->tp_free(scene);
+static void Scene_dealloc(Scene *self) {
+    Py_CLEAR(self->meshes);
+    Py_CLEAR(self->materials);
+    Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 static PyMemberDef Scene_members[] = {
@@ -131,25 +145,53 @@ static PyTypeObject SceneType = {
 static PyObject* tuple_from_face(struct aiFace *f) {
     PyObject *tup = PyTuple_New(f->mNumIndices);
     for(uint i=0; i < f->mNumIndices; i++) {
-        PyTuple_SetItem(tup, i, PyLong_FromUnsignedLong(f->mIndices[i]));
+        PyObject *val = PyLong_FromUnsignedLong(f->mIndices[i]);
+        if (!val) {
+            Py_DECREF(tup);
+            return NULL;
+        }
+        PyTuple_SetItem(tup, i, val);
     }
     return tup;
 }
 
 static PyObject* tuple_from_vec3d(struct aiVector3D *vec) {
     PyObject *tup = PyTuple_New(3);
-    PyTuple_SetItem(tup, 0, PyFloat_FromDouble(vec->x));
-    PyTuple_SetItem(tup, 1, PyFloat_FromDouble(vec->y));
-    PyTuple_SetItem(tup, 2, PyFloat_FromDouble(vec->z));
+    PyObject *x = PyFloat_FromDouble(vec->x);
+    PyObject *y = PyFloat_FromDouble(vec->y);
+    PyObject *z = PyFloat_FromDouble(vec->z);
+    if (!x || !y || !z) {
+        Py_XDECREF(x);
+        Py_XDECREF(y);
+        Py_XDECREF(z);
+        Py_DECREF(tup);
+        return NULL;
+    }
+    PyTuple_SetItem(tup, 0, x);
+    PyTuple_SetItem(tup, 1, y);
+    PyTuple_SetItem(tup, 2, z);
     return tup;
 }
 
 static PyObject* tuple_from_col4d(struct aiColor4D *vec) {
     PyObject *tup = PyTuple_New(3);
-    PyTuple_SetItem(tup, 0, PyFloat_FromDouble(vec->r));
-    PyTuple_SetItem(tup, 1, PyFloat_FromDouble(vec->g));
-    PyTuple_SetItem(tup, 2, PyFloat_FromDouble(vec->b));
-    PyTuple_SetItem(tup, 3, PyFloat_FromDouble(vec->a));
+    PyObject *r = PyFloat_FromDouble(vec->r);
+    PyObject *g = PyFloat_FromDouble(vec->g);
+    PyObject *b = PyFloat_FromDouble(vec->b);
+    PyObject *a = PyFloat_FromDouble(vec->a);
+    if (!r || !g || !b || !a) {
+        Py_XDECREF(r);
+        Py_XDECREF(g);
+        Py_XDECREF(b);
+        Py_XDECREF(a);
+        Py_DECREF(tup);
+        return NULL;
+    }
+
+    PyTuple_SetItem(tup, 0, r);
+    PyTuple_SetItem(tup, 1, g);
+    PyTuple_SetItem(tup, 2, b);
+    PyTuple_SetItem(tup, 3, a);
     return tup;
 }
 
@@ -157,6 +199,10 @@ static PyObject* list_from_vec3d(struct aiVector3D *arr, uint size) {
     PyObject *items = PyList_New(size);
     for(uint i=0; i<size; i++) {
         PyObject *tup = tuple_from_vec3d(&arr[i]);
+        if (!tup) {
+            Py_DECREF(items);
+            return NULL;
+        }
         PyList_SetItem(items, i, tup);
     }
     return items;
@@ -166,6 +212,10 @@ static PyObject* list_from_col4d(struct aiColor4D *arr, uint size) {
     PyObject *items = PyList_New(size);
     for(uint i=0; i<size; i++) {
         PyObject *tup = tuple_from_col4d(&arr[i]);
+        if (!tup) {
+            Py_DECREF(items);
+            return NULL;
+        }
         PyList_SetItem(items, i, tup);
     }
     return items;
@@ -296,7 +346,15 @@ static PyObject* props_from_material(struct aiMaterial *mat) {
                 break;
         }
 
-        PyDict_SetItem(props, PyUnicode_FromString(get_prop_name(prop->mKey.data)), prop_val);
+        PyObject *key = PyUnicode_FromString(get_prop_name(prop->mKey.data));
+        if (!key) {
+            Py_DECREF(props);
+            return NULL;
+        }
+        PyDict_SetItem(props, key, prop_val);
+        Py_DECREF(prop_val);
+        Py_DECREF(key); // Properly release the key object
+
     }
 
     // Load Textures
@@ -427,6 +485,7 @@ static PyObject* ImportFile(PyObject *self, PyObject *args) {
     Scene *pyscene = (Scene*)(SceneType.tp_alloc(&SceneType, 0));
     process_meshes(pyscene, scene);
     process_materials(pyscene, scene);
+    aiReleaseImport(scene);
     return (PyObject*)pyscene;
 }
 
