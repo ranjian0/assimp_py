@@ -5,39 +5,31 @@
 #include <string.h>       // For strcmp, memcpy
 #include <stdlib.h>       // For malloc, free
 
-// Define ASSIMP_DLL for dynamic linking if needed (common on Windows)
-// #define ASSIMP_DLL
 #include <assimp/cimport.h>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
-#include <assimp/material.h> // For AI_MATKEY_* definitions
+#include <assimp/material.h>
 
 // Forward declarations for type objects
 static PyTypeObject MeshType;
 static PyTypeObject SceneType;
-static PyTypeObject PyNodeType;
+static PyTypeObject NodeType;
 
 // --- Node Type Definition ---
-
-typedef struct PyNodeObject { // Use PyNodeObject convention
+typedef struct Node {
     PyObject_HEAD
     PyObject *name;          // PyUnicodeObject
     PyObject *transformation;// Tuple[Tuple[float,...],...] (4x4 matrix)
     PyObject *parent_name;   // PyUnicodeObject (name of parent) or Py_None
-    PyObject *children;      // PyList of PyNodeObject
+    PyObject *children;      // PyList of Node
     PyObject *mesh_indices;  // PyTuple of PyLongObject
 
     // Store counts directly for convenience
     unsigned int num_children;
     unsigned int num_meshes;
+} Node;
 
-    // NOTE: We don't store parent/children aiNode pointers here
-    // NOTE: Metadata is not included in this version
-
-} PyNodeObject; // Use PyNodeObject convention
-
-static int PyNode_init(PyNodeObject *self, PyObject *args, PyObject *kwds) {
-    // Initialize all PyObject pointers to NULL
+static int Node_init(Node *self, PyObject *args, PyObject *kwds) {
     self->name = NULL;
     self->transformation = NULL;
     self->parent_name = NULL;
@@ -48,7 +40,7 @@ static int PyNode_init(PyNodeObject *self, PyObject *args, PyObject *kwds) {
     return 0;
 }
 
-static void PyNode_dealloc(PyNodeObject *self) {
+static void Node_dealloc(Node *self) {
     Py_CLEAR(self->name);
     Py_CLEAR(self->transformation);
     Py_CLEAR(self->parent_name);
@@ -57,34 +49,32 @@ static void PyNode_dealloc(PyNodeObject *self) {
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
-static PyMemberDef PyNode_members[] = {
-    {"name", T_OBJECT_EX, offsetof(PyNodeObject, name), READONLY, "Node name"},
-    {"transformation", T_OBJECT_EX, offsetof(PyNodeObject, transformation), READONLY, "4x4 transformation matrix (tuple of tuples)"},
-    {"parent_name", T_OBJECT_EX, offsetof(PyNodeObject, parent_name), READONLY, "Name of the parent node (str or None)"},
-    {"children", T_OBJECT_EX, offsetof(PyNodeObject, children), READONLY, "List of child Node objects"},
-    {"mesh_indices", T_OBJECT_EX, offsetof(PyNodeObject, mesh_indices), READONLY, "Tuple of mesh indices associated with this node"},
-    {"num_children", T_UINT, offsetof(PyNodeObject, num_children), READONLY, "Number of children"},
-    {"num_meshes", T_UINT, offsetof(PyNodeObject, num_meshes), READONLY, "Number of meshes referenced"},
-    // Metadata omitted for now
+static PyMemberDef Node_members[] = {
+    {"name", T_OBJECT_EX, offsetof(Node, name), READONLY, "Node name"},
+    {"transformation", T_OBJECT_EX, offsetof(Node, transformation), READONLY, "4x4 transformation matrix (tuple of tuples)"},
+    {"parent_name", T_OBJECT_EX, offsetof(Node, parent_name), READONLY, "Name of the parent node (str or None)"},
+    {"children", T_OBJECT_EX, offsetof(Node, children), READONLY, "List of child Node objects"},
+    {"mesh_indices", T_OBJECT_EX, offsetof(Node, mesh_indices), READONLY, "Tuple of mesh indices associated with this node"},
+    {"num_children", T_UINT, offsetof(Node, num_children), READONLY, "Number of children"},
+    {"num_meshes", T_UINT, offsetof(Node, num_meshes), READONLY, "Number of meshes referenced"},
     {NULL} /* Sentinel */
 };
 
-// Define the PyTypeObject for Node
-static PyTypeObject PyNodeType = {
+static PyTypeObject NodeType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "assimp_py.Node",
     .tp_doc = "Node in the scene hierarchy",
-    .tp_basicsize = sizeof(PyNodeObject),
+    .tp_basicsize = sizeof(Node),
     .tp_itemsize = 0,
     .tp_flags = Py_TPFLAGS_DEFAULT,
     .tp_new = PyType_GenericNew,
-    .tp_init = (initproc)PyNode_init,
-    .tp_dealloc = (destructor)PyNode_dealloc,
-    .tp_members = PyNode_members,
+    .tp_init = (initproc)Node_init,
+    .tp_dealloc = (destructor)Node_dealloc,
+    .tp_members = Node_members,
 };
 
-// --- Mesh Type Definition ---
 
+// --- Mesh Type Definition ---
 typedef struct {
     PyObject_HEAD
     // --- Python Objects (exposed as attributes) ---
@@ -147,9 +137,6 @@ static int Mesh_init(Mesh *self, PyObject *args, PyObject *kwds) {
     self->material_index = 0;
     self->num_color_sets = 0;
     self->num_texcoord_sets = 0;
-
-    // This init shouldn't be called directly by Python users typically.
-    // Initialization happens during the scene loading process.
     return 0;
 }
 
@@ -190,7 +177,6 @@ static void Mesh_dealloc(Mesh *self) {
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
-// Expose attributes as read-only members
 static PyMemberDef Mesh_members[] = {
     {"name", T_OBJECT_EX, offsetof(Mesh, name), READONLY, "Mesh name"},
     {"material_index", T_UINT, offsetof(Mesh, material_index), READONLY, "Material index for this mesh"},
@@ -225,7 +211,6 @@ static PyTypeObject MeshType = {
 
 
 // --- Scene Type Definition ---
-
 typedef struct {
     PyObject_HEAD
     PyObject *meshes;     // List of Mesh objects
@@ -233,7 +218,6 @@ typedef struct {
     PyObject *root_node;
     unsigned int num_meshes;
     unsigned int num_materials;
-    // Could add nodes, animations, etc. here in the future
 } Scene;
 
 static int Scene_init(Scene *self, PyObject *args, PyObject *kwds) {
@@ -890,7 +874,7 @@ fail_mesh_list:
 
 
 // Recursively process Assimp nodes and build the Python Node hierarchy
-// Returns a NEW reference to the created PyNodeObject or NULL on error
+// Returns a NEW reference to the created Node or NULL on error
 static PyObject* process_node_recursive(struct aiNode* c_node) {
     if (!c_node) { // Should not happen for root, but check anyway
         PyErr_SetString(PyExc_ValueError, "Encountered NULL aiNode during processing");
@@ -898,7 +882,7 @@ static PyObject* process_node_recursive(struct aiNode* c_node) {
     }
 
     // 1. Create Python Node object
-    PyNodeObject* py_node = (PyNodeObject*)PyNodeType.tp_alloc(&PyNodeType, 0);
+    Node* py_node = (Node*)NodeType.tp_alloc(&NodeType, 0);
     if (!py_node) return NULL; // Allocation failed (MemoryError likely set)
 
     // 2. Populate Simple Members
@@ -946,7 +930,7 @@ static PyObject* process_node_recursive(struct aiNode* c_node) {
 
 // Error handling: clean up partially created node
 node_proc_error:
-    Py_DECREF(py_node); // This calls PyNode_dealloc which Py_CLEARs members
+    Py_DECREF(py_node); // This calls Node_dealloc which Py_CLEARs members
     return NULL;
 }
 
@@ -958,7 +942,12 @@ PyDoc_STRVAR(import_file_doc,
 "Imports the 3D model from the given filename.\n\n"
 "Args:\n"
 "    filename: Path to the model file.\n"
-"    flags: Post-processing flags (e.g., Process_Triangulate | Process_GenNormals).\n\n"
+"    flags: Post-processing flags (e.g., Process_Triangulate | Process_GenNormals).\n"
+"           Process_Triangulate is highly recommended for predictable index buffers.\n"
+"           Process_JoinIdenticalVertices is useful for reducing vertex count.\n"
+"           Process_CalcTangentSpace is needed if you require tangents/bitangents.\n"
+"           Process_GenSmoothNormals or Process_GenNormals if normals are missing.\n"
+"           Process_FlipUVs can be important depending on texture conventions.\n\n"
 "Returns:\n"
 "    A Scene object containing the loaded data.\n\n"
 "Raises:\n"
@@ -991,11 +980,6 @@ static PyObject* py_import_file(PyObject *self, PyObject *args) {
     fclose(f);
 
     // Import the file using Assimp
-    // aiProcess_Triangulate is highly recommended for predictable index buffers
-    // aiProcess_JoinIdenticalVertices is useful for reducing vertex count
-    // aiProcess_CalcTangentSpace is needed if you require tangents/bitangents
-    // aiProcess_GenSmoothNormals or aiProcess_GenNormals if normals are missing
-    // aiProcess_FlipUVs can be important depending on texture conventions
     c_scene = aiImportFile(filename, flags);
 
     // Check for Assimp loading errors
@@ -1083,14 +1067,14 @@ PyMODINIT_FUNC PyInit_assimp_py(void) {
     // Initialize Types
     if (PyType_Ready(&MeshType) < 0) return NULL;
     if (PyType_Ready(&SceneType) < 0) return NULL;
-    if (PyType_Ready(&PyNodeType) < 0) return NULL;
+    if (PyType_Ready(&NodeType) < 0) return NULL;
 
     // Create Module
     module = PyModule_Create(&assimp_py_module);
     if (!module) {
         Py_DECREF(&MeshType); // Need cleanup if module creation fails
         Py_DECREF(&SceneType);
-        Py_DECREF(&PyNodeType);
+        Py_DECREF(&NodeType);
         return NULL;
     }
 
@@ -1110,11 +1094,11 @@ PyMODINIT_FUNC PyInit_assimp_py(void) {
         return NULL;
     }
 
-    Py_INCREF(&PyNodeType); // **** ADDED ****
-    if (PyModule_AddObject(module, "Node", (PyObject *)&PyNodeType) < 0) {
-        Py_DECREF(&MeshType);   // **** Cleanup on failure ****
-        Py_DECREF(&SceneType);  // **** Cleanup on failure ****
-        Py_DECREF(&PyNodeType); // **** Cleanup on failure ****
+    Py_INCREF(&NodeType); // **** ADDED ****
+    if (PyModule_AddObject(module, "Node", (PyObject *)&NodeType) < 0) {
+        Py_DECREF(&MeshType);
+        Py_DECREF(&SceneType);
+        Py_DECREF(&NodeType);
         Py_DECREF(module);
         return NULL;
     }    
