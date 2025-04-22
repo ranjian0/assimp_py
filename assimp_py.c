@@ -527,6 +527,68 @@ static PyObject* tuple_from_uint_array(const unsigned int* arr, unsigned int siz
     return tuple;
 }
 
+// Helper to convert ASSIMP property names to better format
+static char* nice_prop_name(char* prop) {
+    if (strcmp(prop, "?mat.name") == 0)
+        return "NAME";
+    else if (strcmp(prop, "$mat.twosided") == 0)
+        return "TWOSIDED";
+    else if (strcmp(prop, "$mat.shadingm") == 0)
+        return "SHADING_MODEL";
+    else if (strcmp(prop, "$mat.wireframe") == 0)
+        return "ENABLE_WIREFRAME";
+    else if (strcmp(prop, "$mat.blend") == 0)
+        return "BLEND_FUNC";
+    else if (strcmp(prop, "$mat.opacity") == 0)
+        return "OPACITY";
+    else if (strcmp(prop, "$mat.bumpscaling") == 0)
+        return "BUMPSCALING";
+    else if (strcmp(prop, "$mat.shininess") == 0)
+        return "SHININESS";
+    else if (strcmp(prop, "$mat.reflectivity") == 0)
+        return "REFLECTIVITY";
+    else if (strcmp(prop, "$mat.shinpercent") == 0)
+        return "SHININESS_STRENGTH";
+    else if (strcmp(prop, "$mat.refracti") == 0)
+        return "REFRACTI";
+    else if (strcmp(prop, "$clr.diffuse") == 0)
+        return "COLOR_DIFFUSE";
+    else if (strcmp(prop, "$clr.ambient") == 0)
+        return "COLOR_AMBIENT";
+    else if (strcmp(prop, "$clr.specular") == 0)
+        return "COLOR_SPECULAR";
+    else if (strcmp(prop, "$clr.emissive") == 0)
+        return "COLOR_EMISSIVE";
+    else if (strcmp(prop, "$clr.transparent") == 0)
+        return "COLOR_TRANSPARENT";
+    else if (strcmp(prop, "$clr.reflective") == 0)
+        return "COLOR_REFLECTIVE";
+    else if (strcmp(prop, "?bg.global") == 0)
+        return "GLOBAL_BACKGROUND_IMAGE";
+    else if (strcmp(prop, "$tex.file") == 0)
+        return "TEXTURE_BASE";
+    else if (strcmp(prop, "$tex.mapping") == 0)
+        return "MAPPING_BASE";
+    else if (strcmp(prop, "$tex.flags") == 0)
+        return "TEXFLAGS_BASE";
+    else if (strcmp(prop, "$tex.uvwsrc") == 0)
+        return "UVWSRC_BASE";
+    else if (strcmp(prop, "$tex.mapmodev") == 0)
+        return "MAPPINGMODE_V_BASE";
+    else if (strcmp(prop, "$tex.mapaxis") == 0)
+        return "TEXMAP_AXIS_BASE";
+    else if (strcmp(prop, "$tex.blend") == 0)
+        return "TEXBLEND_BASE";
+    else if (strcmp(prop, "$tex.uvtrafo") == 0)
+        return "UVTRANSFORM_BASE";
+    else if (strcmp(prop, "$tex.op") == 0)
+        return "TEXOP_BASE";
+    else if (strcmp(prop, "$tex.mapmodeu") == 0)
+        return "MAPPINGMODE_U_BASE";
+    else
+        return "NONE";
+}
+
 
 // --- Scene Processing Logic ---
 
@@ -550,7 +612,7 @@ static PyObject* process_materials(const struct aiScene *c_scene) {
         for (unsigned int p = 0; p < mat->mNumProperties; ++p) {
             struct aiMaterialProperty *prop = mat->mProperties[p];
             // Use the original key directly
-            PyObject *py_key = PyUnicode_FromString(prop->mKey.data);
+            PyObject *py_key = PyUnicode_FromString(nice_prop_name(prop->mKey.data));
             if (!py_key) {
                 Py_DECREF(mat_dict);
                 goto fail_mat_list;

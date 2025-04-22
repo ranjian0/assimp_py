@@ -498,7 +498,7 @@ class TestMaterials:
         found_material = None
         for mat in loaded_scene.materials:
             # Use get() to avoid KeyError if name key is missing (though it shouldn't be)
-            if mat.get("?mat.name") == target_name:
+            if mat.get("NAME") == target_name:
                 found_material = mat
                 break
         if found_material is None:
@@ -511,16 +511,16 @@ class TestMaterials:
 
     def test_material_name(self, material):
         """Check for material name property."""
-        assert "?mat.name" in material # Assimp key for name
-        assert isinstance(material["?mat.name"], str)
-        assert material["?mat.name"] == "TestMaterial"
+        assert "NAME" in material # Assimp key for name
+        assert isinstance(material["NAME"], str)
+        assert material["NAME"] == "TestMaterial"
 
     def test_material_colors(self, material):
         """Check for common color properties."""
         # Keys are defined by Assimp (ai_matkey_defines.h)
-        diffuse_key = "$clr.diffuse"
-        specular_key = "$clr.specular"
-        ambient_key = "$clr.ambient"
+        diffuse_key = "COLOR_DIFFUSE"
+        specular_key = "COLOR_SPECULAR"
+        ambient_key = "COLOR_AMBIENT"
 
         assert diffuse_key in material
         assert specular_key in material
@@ -538,7 +538,7 @@ class TestMaterials:
 
     def test_material_shininess(self, material):
         """Check for shininess property."""
-        shininess_key = "$mat.shininess"
+        shininess_key = "SHININESS"
         assert shininess_key in material
         assert isinstance(material[shininess_key], float) or isinstance(material[shininess_key], int)
         assert material[shininess_key] == 32.0
