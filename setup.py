@@ -82,8 +82,7 @@ class CMakeBuild(build_ext):
             ]
 
         # Multicor build for dev
-        # build_args = ['--config', cfg, '-j', str(multiprocessing.cpu_count() + 1)]
-        build_args = ['--config', cfg]
+        build_args = ['--config', cfg, '-j', str(multiprocessing.cpu_count())]
         self.spawn(['cmake', '-S', '.', '-B', str(build_temp)] + cmake_args)
         if not self.dry_run:
             self.spawn(['cmake', '--build', str(build_temp)] + build_args)
