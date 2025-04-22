@@ -37,19 +37,48 @@ import assimp_py
 process_flags = (
     assimp_py.Process_Triangulate | assimp_py.Process_CalcTangentSpace
 )
-scene = assimp_py.ImportFile("models/planet/planet.obj", process_flags)
+scene = assimp_py.import_file("tests/models/cyborg/cyborg.obj", process_flags)
 
 # -- getting data
 for m in scene.meshes:
+    # IMPORTANT 
+    # All vertex data is stored as memoryviews
+
+
     # -- getting vertex data
     # vertices are guaranteed to exist
     verts = m.vertices
+    # as a list
+    verts_list = verts.tolist()
+    # as bytes
+    verts_bytes = verts.tobytes()
+    # (Optional) as numpy array
+    # np.asarray(verts)
 
     # other components must be checked for None
-    normals = [] or m.normals
-    texcoords = [] or m.texcoords
-    tangents = [] or m.tangents
-    bitangent = [] or m.bitangents
+    normals = m.normals if m.normals else []
+    tangents = m.tangents if m.tangents else []
+    bitangents = m.bitangents if m.bitangents else []
+
+    # texcoords come in sets, 'm.texcoords' is a list of memoryviews or None
+    if m.texcoords:
+      num_texcoords_sets = len(m.texcoords)
+
+      texcoords1 = m.texcoords[0]
+      # texcoords2 = m.texcoords[1]
+      # texcoords3 = m.texcoords[2]
+      print(texcoords1)
+
+
+    # colors also come in sets, 'm.colors' is a list of memoryviews or None
+    if m.colors:
+      num_color_sets = len([] or m.colors)
+
+      colors1 = m.colors[0]
+      # colors2 = m.colors[1]
+      # colors3 = m.colors[2]
+      print(colors1)
+
 
     # -- getting materials
     # mat is a dict consisting of assimp material properties
@@ -57,9 +86,23 @@ for m in scene.meshes:
 
     # -- getting color
     diffuse_color = mat["COLOR_DIFFUSE"]
+    print(diffuse_color)
 
     # -- getting textures
     diffuse_tex = mat["TEXTURES"][assimp_py.TextureType_DIFFUSE]
+    print(diffuse_tex)
+
+# Nodes are also available
+root = scene.root_node
+
+def traverse(root, indent=0):
+   print(' '*indent + root.name)
+   # print(root.transformation) -- transform matrix for the node
+   for child in root.children:
+      traverse(child, indent=indent+2)
+
+print("Traversing nodes ...")
+traverse(root)
 ```
 # Supported Mesh Formats
 

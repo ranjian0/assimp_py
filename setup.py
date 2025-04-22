@@ -99,12 +99,11 @@ setup(
     long_description=README,
     long_description_content_type="text/markdown",
     description="Minimal Python Bindings for ASSIMP Library using C-API",
-    author="Ian Ichung'wah",
+    author="Ian Ichung'wa",
     author_email="karanjaichungwa@gmail.com",
     url="https://github.com/ranjian0/assimp_py",
     license="MIT",
     classifiers=[
-        "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
