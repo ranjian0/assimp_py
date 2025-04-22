@@ -410,8 +410,7 @@ static PyObject* get_material_property(struct aiMaterial *mat, const char *key, 
                      } // else PyList_New failed
                  }
                  // Check object creation success
-                 if (!py_value && !PyErr_Occurred()) { ret = aiReturn_FAILURE; }
-                 else if (!py_value && PyErr_Occurred()) { ret = aiReturn_FAILURE; }
+                 if (!py_value) { ret = aiReturn_FAILURE; }
              } else if (ret == aiReturn_SUCCESS && arr_size == 0) {
                  // Property type was float/double/buffer, but getter returned 0 elements.
                  // This shouldn't typically happen if prop->mType matched, but handle it.
@@ -444,8 +443,7 @@ static PyObject* get_material_property(struct aiMaterial *mat, const char *key, 
                      } // else PyList_New failed
                  }
                   // Check object creation success
-                 if (!py_value && !PyErr_Occurred()) { ret = aiReturn_FAILURE; }
-                 else if (!py_value && PyErr_Occurred()) { ret = aiReturn_FAILURE; }
+                 if (!py_value) { ret = aiReturn_FAILURE; }
             } else if (ret == aiReturn_SUCCESS && arr_size == 0) {
                  // Property type was int, but getter returned 0 elements.
                  ret = aiReturn_FAILURE; // Treat as failure to get a *value*
