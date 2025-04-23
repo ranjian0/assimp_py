@@ -1,10 +1,10 @@
 all: clean install test
 	
 develop:
-	@python setup.py develop
+	@pip install -e .
 
 install:
-	@python setup.py install 
+	@pip install . -v
 
 test:
 	@pytest tests/

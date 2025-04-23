@@ -1,4 +1,3 @@
-import re
 import sys
 import pathlib
 import platform
@@ -7,7 +6,6 @@ import multiprocessing
 
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
-from distutils.version import LooseVersion
 
 PYTHON_VERSION = f"{sys.version_info.major}.{sys.version_info.minor}"
 
@@ -26,11 +24,6 @@ class CMakeBuild(build_ext):
         except OSError:
             raise RuntimeError("CMake must be installed to build the following extensions: " +
                                ", ".join(e.name for e in self.extensions))
-
-        if platform.system() == "Windows":
-            cmake_version = LooseVersion(re.search(r'version\s*([\d.]+)', out.decode()).group(1))
-            if cmake_version < '3.10':
-                raise RuntimeError("CMake >= 3.10 is required on Windows")
 
         for ext in self.extensions:
             self.build_extension(ext)
@@ -74,7 +67,6 @@ class CMakeBuild(build_ext):
 
         # We can handle some platform-specific settings at our discretion
         if platform.system() == 'Windows':
-            plat = ('x64' if platform.architecture()[0] == '64bit' else 'Win32')
             cmake_args += [
                 # These options are likely to be needed under Windows
                 '-DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=TRUE',
@@ -82,8 +74,7 @@ class CMakeBuild(build_ext):
             ]
 
         # Multicor build for dev
-        # build_args = ['--config', cfg, '-j', str(multiprocessing.cpu_count() + 1)]
-        build_args = ['--config', cfg]
+        build_args = ['--config', cfg, '-j', str(multiprocessing.cpu_count())]
         self.spawn(['cmake', '-S', '.', '-B', str(build_temp)] + cmake_args)
         if not self.dry_run:
             self.spawn(['cmake', '--build', str(build_temp)] + build_args)
@@ -100,12 +91,11 @@ setup(
     long_description=README,
     long_description_content_type="text/markdown",
     description="Minimal Python Bindings for ASSIMP Library using C-API",
-    author="Ian Ichung'wah",
+    author="Ian Ichung'wa",
     author_email="karanjaichungwa@gmail.com",
     url="https://github.com/ranjian0/assimp_py",
     license="MIT",
     classifiers=[
-        "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",

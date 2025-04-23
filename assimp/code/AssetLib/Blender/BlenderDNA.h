@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2022, assimp team
+Copyright (c) 2006-2024, assimp team
 
 
 All rights reserved.
@@ -106,9 +106,7 @@ struct ElemBase {
         // empty
     }
 
-    virtual ~ElemBase() {
-        // empty
-    }
+    virtual ~ElemBase() = default;
 
     /** Type name of the element. The type
      * string points is the `c_str` of the `name` attribute of the

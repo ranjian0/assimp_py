@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2022, assimp team
+Copyright (c) 2006-2024, assimp team
 
 All rights reserved.
 
@@ -48,6 +48,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma GCC diagnostic ignored "-Wunused-function"
 #endif
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-function"
+#endif
+
 #ifndef STB_USE_HUNTER
 /*  Use prefixed names for the symbols from stb_image as it is a very commonly embedded library.
     Including vanilla stb_image symbols causes duplicate symbol problems if assimp is linked
@@ -59,10 +64,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
     The list can be regenerated using the following:
 
-    cat <path/to/stb/stb_image.h> | fgrep STBIDEF | fgrep '(' | sed -E 's/\*|\(.+//g' | \
-        awk '{print "#define " $(NF) " assimp_" $(NF) }' | sort | uniq"
+    cat "path/to/stb/stb_image.h" | fgrep STBIDEF | fgrep '(' | sed -E 's/\*|\(.+//g' | \
+        awk '{print "#define " $(NF) " assimp_" $(NF) }' | sort | uniq
 */
 #define stbi_convert_iphone_png_to_rgb assimp_stbi_convert_iphone_png_to_rgb
+#define stbi_convert_iphone_png_to_rgb_thread assimp_stbi_convert_iphone_png_to_rgb_thread
 #define stbi_convert_wchar_to_utf8 assimp_stbi_convert_wchar_to_utf8
 #define stbi_failure_reason assimp_stbi_failure_reason
 #define stbi_hdr_to_ldr_gamma assimp_stbi_hdr_to_ldr_gamma
@@ -82,22 +88,23 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define stbi_is_hdr_from_memory assimp_stbi_is_hdr_from_memory
 #define stbi_ldr_to_hdr_gamma assimp_stbi_ldr_to_hdr_gamma
 #define stbi_ldr_to_hdr_scale assimp_stbi_ldr_to_hdr_scale
+#define stbi_load assimp_stbi_load
 #define stbi_load_16 assimp_stbi_load_16
 #define stbi_load_16_from_callbacks assimp_stbi_load_16_from_callbacks
 #define stbi_load_16_from_memory assimp_stbi_load_16_from_memory
-#define stbi_load assimp_stbi_load
+#define stbi_load_from_callbacks assimp_stbi_load_from_callbacks
+#define stbi_load_from_file assimp_stbi_load_from_file
+#define stbi_load_from_file_16 assimp_stbi_load_from_file_16
+#define stbi_load_from_memory assimp_stbi_load_from_memory
+#define stbi_load_gif_from_memory assimp_stbi_load_gif_from_memory
 #define stbi_loadf assimp_stbi_loadf
 #define stbi_loadf_from_callbacks assimp_stbi_loadf_from_callbacks
 #define stbi_loadf_from_file assimp_stbi_loadf_from_file
 #define stbi_loadf_from_memory assimp_stbi_loadf_from_memory
-#define stbi_load_from_callbacks assimp_stbi_load_from_callbacks
-#define stbi_load_from_file_16 assimp_stbi_load_from_file_16
-#define stbi_load_from_file assimp_stbi_load_from_file
-#define stbi_load_from_memory assimp_stbi_load_from_memory
-#define stbi_load_gif_from_memory assimp_stbi_load_gif_from_memory
 #define stbi_set_flip_vertically_on_load assimp_stbi_set_flip_vertically_on_load
 #define stbi_set_flip_vertically_on_load_thread assimp_stbi_set_flip_vertically_on_load_thread
 #define stbi_set_unpremultiply_on_load assimp_stbi_set_unpremultiply_on_load
+#define stbi_set_unpremultiply_on_load_thread assimp_stbi_set_unpremultiply_on_load_thread
 #define stbi_zlib_decode_buffer assimp_stbi_zlib_decode_buffer
 #define stbi_zlib_decode_malloc assimp_stbi_zlib_decode_malloc
 #define stbi_zlib_decode_malloc_guesssize assimp_stbi_zlib_decode_malloc_guesssize
@@ -114,3 +121,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma GCC diagnostic pop
 #endif
 
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif

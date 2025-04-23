@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2022, assimp team
+Copyright (c) 2006-2024, assimp team
 
 All rights reserved.
 
@@ -43,6 +43,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define INCLUDED_AI_IRRXML_WRAPPER
 
 #include <assimp/ai_assert.h>
+#include <assimp/StringUtils.h>
 #include <assimp/DefaultLogger.hpp>
 
 #include "BaseImporter.h"
@@ -58,8 +59,8 @@ namespace Assimp {
 struct find_node_by_name_predicate {
     /// @brief The default constructor.
     find_node_by_name_predicate() = default;
-    
-    
+
+
     std::string mName; ///< The name to find.
     find_node_by_name_predicate(const std::string &name) :
             mName(name) {
@@ -210,21 +211,27 @@ public:
     /// @return true, if the value can be read out.
     static inline bool getValueAsString(XmlNode &node, std::string &text);
 
+    /// @brief Will try to get the value of the node as a real.
+    /// @param[in]  node   The node to search in.
+    /// @param[out] v      The value as a ai_real.
+    /// @return true, if the value can be read out.
+    static inline bool getValueAsReal(XmlNode &node, ai_real &v);
+
     /// @brief Will try to get the value of the node as a float.
     /// @param[in] node     The node to search in.
-    /// @param[out] text    The value as a float.
+    /// @param[out]v        The value as a float.
     /// @return true, if the value can be read out.
-    static inline bool getValueAsFloat(XmlNode &node, ai_real &v);
+    static inline bool getValueAsFloat(XmlNode &node, float &v);
 
     /// @brief Will try to get the value of the node as an integer.
-    /// @param[in] node     The node to search in.
-    /// @param[out] text    The value as a int.
+    /// @param[in]  node    The node to search in.
+    /// @param[out] i       The value as a int.
     /// @return true, if the value can be read out.
     static inline bool getValueAsInt(XmlNode &node, int &v);
 
     /// @brief Will try to get the value of the node as an bool.
-    /// @param[in] node     The node to search in.
-    /// @param[out] text    The value as a bool.
+    /// @param[in]  node    The node to search in.
+    /// @param[out] v       The value as a bool.
     /// @return true, if the value can be read out.
     static inline bool getValueAsBool(XmlNode &node, bool &v);
 
@@ -302,7 +309,9 @@ bool TXmlParser<TNodeType>::parse(IOStream *stream) {
     stream->Read(&mData[0], 1, len);
 
     mDoc = new pugi::xml_document();
-    pugi::xml_parse_result parse_result = mDoc->load_string(&mData[0], pugi::parse_full);
+    // load_string assumes native encoding (aka always utf-8 per build options)
+    //pugi::xml_parse_result parse_result = mDoc->load_string(&mData[0], pugi::parse_full);
+     pugi::xml_parse_result parse_result = mDoc->load_buffer(&mData[0], mData.size(), pugi::parse_full);
     if (parse_result.status == pugi::status_ok) {
         return true;
     }
@@ -445,12 +454,25 @@ inline bool TXmlParser<TNodeType>::getValueAsString(XmlNode &node, std::string &
     }
 
     text = node.text().as_string();
+    text = ai_trim(text);
 
     return true;
 }
 
 template <class TNodeType>
-inline bool TXmlParser<TNodeType>::getValueAsFloat(XmlNode &node, ai_real &v) {
+inline bool TXmlParser<TNodeType>::getValueAsReal(XmlNode& node, ai_real& v) {
+    if (node.empty()) {
+        return false;
+    }
+
+    v = node.text().as_float();
+
+    return true;
+}
+
+
+template <class TNodeType>
+inline bool TXmlParser<TNodeType>::getValueAsFloat(XmlNode &node, float &v) {
     if (node.empty()) {
         return false;
     }
