@@ -1,4 +1,3 @@
-import re
 import sys
 import pathlib
 import platform
@@ -7,7 +6,6 @@ import multiprocessing
 
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
-from distutils.version import LooseVersion
 
 PYTHON_VERSION = f"{sys.version_info.major}.{sys.version_info.minor}"
 
@@ -26,11 +24,6 @@ class CMakeBuild(build_ext):
         except OSError:
             raise RuntimeError("CMake must be installed to build the following extensions: " +
                                ", ".join(e.name for e in self.extensions))
-
-        if platform.system() == "Windows":
-            cmake_version = LooseVersion(re.search(r'version\s*([\d.]+)', out.decode()).group(1))
-            if cmake_version < '3.10':
-                raise RuntimeError("CMake >= 3.10 is required on Windows")
 
         for ext in self.extensions:
             self.build_extension(ext)
@@ -74,7 +67,6 @@ class CMakeBuild(build_ext):
 
         # We can handle some platform-specific settings at our discretion
         if platform.system() == 'Windows':
-            plat = ('x64' if platform.architecture()[0] == '64bit' else 'Win32')
             cmake_args += [
                 # These options are likely to be needed under Windows
                 '-DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=TRUE',
