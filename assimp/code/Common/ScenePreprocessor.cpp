@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2022, assimp team
+Copyright (c) 2006-2024, assimp team
 
 All rights reserved.
 
@@ -106,7 +106,7 @@ void ScenePreprocessor::ProcessMesh(aiMesh *mesh) {
         if (!mesh->mTextureCoords[i]) {
             mesh->mNumUVComponents[i] = 0;
             continue;
-        } 
+        }
 
         if (!mesh->mNumUVComponents[i]) {
             mesh->mNumUVComponents[i] = 2;

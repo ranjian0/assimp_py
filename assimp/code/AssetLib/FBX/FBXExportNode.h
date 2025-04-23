@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2022, assimp team
+Copyright (c) 2006-2024, assimp team
 
 All rights reserved.
 
@@ -77,8 +77,6 @@ public: // constructors
     /// The class constructor with the name.
     Node(const std::string& n)
     : name(n)
-    , properties()
-    , children()
     , force_has_children( false ) {
         // empty
     }
@@ -87,8 +85,6 @@ public: // constructors
     template <typename... More>
     Node(const std::string& n, More&&... more)
     : name(n)
-    , properties()
-    , children()
     , force_has_children(false) {
         AddProperties(std::forward<More>(more)...);
     }

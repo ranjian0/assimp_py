@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2022, assimp team
+Copyright (c) 2006-2024, assimp team
 
 All rights reserved.
 
@@ -69,13 +69,16 @@ Geometry::Geometry(uint64_t id, const Element& element, const std::string& name,
         }
         const BlendShape* const bsp = ProcessSimpleConnection<BlendShape>(*con, false, "BlendShape -> Geometry", element);
         if (bsp) {
-            blendShapes.push_back(bsp);
+            auto pr = blendShapes.insert(bsp);
+            if (!pr.second) {
+                FBXImporter::LogWarn("there is the same blendShape id ", bsp->ID());
+            }
         }
     }
 }
 
 // ------------------------------------------------------------------------------------------------
-const std::vector<const BlendShape*>& Geometry::GetBlendShapes() const {
+const std::unordered_set<const BlendShape*>& Geometry::GetBlendShapes() const {
     return blendShapes;
 }
 
@@ -464,9 +467,9 @@ void ResolveVertexDataArray(std::vector<T>& data_out, const Scope& source,
         std::vector<int> uvIndices;
         ParseVectorDataArray(uvIndices,GetRequiredElement(source,indexDataElementName));
 
-        if (uvIndices.size() != vertex_count) {
+        if (uvIndices.size() != mapping_offsets.size()) {
             FBXImporter::LogError("length of input data unexpected for ByVertice mapping: ",
-                                  uvIndices.size(), ", expected ", vertex_count);
+                                  uvIndices.size(), ", expected ", mapping_offsets.size());
             return;
         }
 
@@ -641,10 +644,12 @@ void MeshGeometry::ReadVertexDataMaterials(std::vector<int>& materials_out, cons
         return;
     }
 
-    // materials are handled separately. First of all, they are assigned per-face
-    // and not per polyvert. Secondly, ReferenceInformationType=IndexToDirect
-    // has a slightly different meaning for materials.
-    ParseVectorDataArray(materials_out,GetRequiredElement(source,"Materials"));
+    if (source["Materials"]) {
+        // materials are handled separately. First of all, they are assigned per-face
+        // and not per polyvert. Secondly, ReferenceInformationType=IndexToDirect
+        // has a slightly different meaning for materials.
+        ParseVectorDataArray(materials_out, GetRequiredElement(source, "Materials"));
+    }
 
     if (MappingInformationType == "AllSame") {
         // easy - same material for all faces

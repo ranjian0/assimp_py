@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2022, assimp team
+Copyright (c) 2006-2024, assimp team
 
 All rights reserved.
 
@@ -165,7 +165,7 @@ void AnimResolver::UpdateAnimRangeSetup() {
         if (delta == 0.0) {
             continue;
         }
-        
+
         const size_t old_size = (*it).keys.size();
         const float value_delta = (*it).keys.back().value - (*it).keys.front().value;
 

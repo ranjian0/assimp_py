@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2022, assimp team
+Copyright (c) 2006-2024, assimp team
 All rights reserved.
 
 Redistribution and use of this software in source and binary forms,
@@ -52,8 +52,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 namespace Assimp {
 template <>
 const char *LogFunctions<BlenderBMeshConverter>::Prefix() {
-    static auto prefix = "BLEND_BMESH: ";
-    return prefix;
+    return "BLEND_BMESH: ";
 }
 } // namespace Assimp
 
