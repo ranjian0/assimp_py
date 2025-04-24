@@ -94,6 +94,8 @@ ENV/
 # Pycharm project files
 .idea
 
+.vscode
+
 # pytest
 .pytest_cache
 *.config
