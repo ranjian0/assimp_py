@@ -1,19 +1,21 @@
+import os
 import sys
 import pathlib
 import platform
 import subprocess
 import multiprocessing
 
-from setuptools import setup, Extension
+from setuptools import setup, Extension, find_packages
 from setuptools.command.build_ext import build_ext
 
 PYTHON_VERSION = f"{sys.version_info.major}.{sys.version_info.minor}"
 
 class CMakeExtension(Extension):
 
-    def __init__(self, name):
+    def __init__(self, name, sourcedir=""):
         # don't invoke the original build_ext for this special extension
         super().__init__(name, sources=[])
+        self.sourcedir = os.path.abspath(sourcedir)
 
 
 class CMakeBuild(build_ext):
@@ -39,6 +41,7 @@ class CMakeBuild(build_ext):
 
         extdir = pathlib.Path(self.get_ext_fullpath(ext.name))
         extdir.parent.mkdir(parents=True, exist_ok=True)
+        print(extdir)
 
         cmake_args = [
             '-DCMAKE_BUILD_TYPE=' + cfg,
@@ -79,32 +82,16 @@ class CMakeBuild(build_ext):
         if not self.dry_run:
             self.spawn(['cmake', '--build', str(build_temp)] + build_args)
 
-
-# The directory containing this file
-HERE = pathlib.Path(__file__).parent
-README = (HERE/"README.md").read_text()
-
-
 setup(
-    name="assimp_py",
-    version="1.1.0",
-    long_description=README,
-    long_description_content_type="text/markdown",
-    description="Minimal Python Bindings for ASSIMP Library using C-API",
-    author="Ian Ichung'wa",
-    author_email="karanjaichungwa@gmail.com",
-    url="https://github.com/ranjian0/assimp_py",
-    license="MIT",
-    classifiers=[
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
-        "Programming Language :: Python :: 3.13"
-    ],
-    ext_modules=[CMakeExtension("assimp_py")],
+    packages=['assimp_py'],
+    package_dir={'': 'src'},
+    ext_modules=[CMakeExtension("assimp_py.assimp_py", sourcedir="src/assimp")],
     cmdclass={
         'build_ext': CMakeBuild,
+    },
+    exclude_package_data={
+        'assimp_py': [
+            '*.c',
+        ]
     }
 )

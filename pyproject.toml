@@ -1,0 +1,38 @@
+[build-system]
+requires = [
+    "setuptools>=61",
+    "wheel",
+    "cmake>=4.0",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "assimp_py"
+version = "1.1.0"
+description = "Minimal Python Bindings for ASSIMP Library using C-API"
+readme = "README.md"
+license-files = ["LICENSE", "src/assimp/LICENSE"]
+requires-python = ">=3.9"
+
+authors = [
+    { name = "Ian Ichung'wa", email = "karanjaichungwa@gmail.com" }
+]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13"
+]
+
+keywords = ["ASSIMP", "3D", "Graphics"]
+
+[project.urls]
+Homepage = "https://github.com/ranjian0/assimp_py"
+Repository = "https://github.com/ranjian0/assimp_py"
+
+
+[project.optional-dependencies]
+test = ["pytest", "memory-profiler"]

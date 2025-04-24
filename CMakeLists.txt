@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 4.0)
 
 project(assimp_py)
 set(CMAKE_C_STANDARD 99)
@@ -31,15 +31,15 @@ if(MSVC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /J")
 endif()
 
-add_subdirectory(assimp)
+add_subdirectory(src/assimp)
 
 # build for universal2
-set_property(DIRECTORY assimp PROPERTY CMAKE_OSX_ARCHITECTURES "x86_64;arm64")
+set_property(DIRECTORY src/assimp PROPERTY CMAKE_OSX_ARCHITECTURES "x86_64;arm64")
 
 # -- build the python extension
-include_directories(assimp/include ${PROJECT_BINARY_DIR}/assimp/include ${Python_INCLUDE_DIRS})
+include_directories(src/assimp/include ${PROJECT_BINARY_DIR}/src/assimp/include ${Python_INCLUDE_DIRS})
 link_directories(${Python_LIBRARY_DIRS})
-add_library(assimp_py SHARED assimp_py.c)
+add_library(assimp_py SHARED src/assimp_py/assimp_py.c)
 
 if(UNIX AND NOT APPLE)
     # For some reason, by default, we link to static zlib and rt,

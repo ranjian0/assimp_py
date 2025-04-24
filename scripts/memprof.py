@@ -1,11 +1,10 @@
 import assimp_py
-from pprint import pprint
 from pathlib import Path
 from memory_profiler import profile
 
 
-model_a = Path(__file__).parent.joinpath("tests/models/cyborg/cyborg.obj")
-model_b = Path(__file__).parent.joinpath("tests/models/planet/planet.obj")
+model_a = Path(__file__).parent.parent.joinpath("tests/models/cyborg/cyborg.obj")
+model_b = Path(__file__).parent.parent.joinpath("tests/models/planet/planet.obj")
 
 @profile
 def func(model):
@@ -17,3 +16,4 @@ def func(model):
 
 for _ in range(10):
     func(model_a)
+    func(model_b)

@@ -9,11 +9,15 @@ install:
 test:
 	@pytest tests/
 
+profile:
+	python scripts/memprof.py
+
 .PHONY: clean
 
 clean:
 	@rm -f *.so
 	@rm -rf dist
 	@rm -rf build
-	@rm -rf *.egg-info
+	@rm -rf src/*.egg-info
 	@rm -rf .pytest_cache
+	@rm -rf tests/__pycache__
