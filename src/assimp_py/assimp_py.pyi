@@ -70,7 +70,7 @@ class Scene:
     meshes: list[Mesh]
     num_materials: int
     num_meshes: int
-    root_node: int
+    root_node: Node
     def __init__(self, *args, **kwargs) -> None: ...
 
 def import_file(filename: str, flags: int) -> Scene: ...
