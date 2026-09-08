@@ -12,7 +12,7 @@ version = "1.2.0"
 description = "Minimal Python Bindings for ASSIMP Library using C-API"
 readme = "README.md"
 license-files = ["LICENSE", "licenses/assimp-LICENSE"]
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 
 authors = [
     { name = "Ian Ichung'wa", email = "karanjaichungwa@gmail.com" }
@@ -20,11 +20,9 @@ authors = [
 
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13"
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14"
 ]
 
 keywords = ["ASSIMP", "3D", "Graphics"]
