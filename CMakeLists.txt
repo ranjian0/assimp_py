@@ -39,6 +39,12 @@ if(CMAKE_COMPILER_IS_GNUCC)
 endif()
 
 if(MSVC)
+    # Statically link the CRT so wheels are hermetic: no dependency on
+    # msvcp140.dll/vcruntime140.dll (whose ARM64 variants do not exist on
+    # cross-build hosts) and nothing for delvewheel to vendor. Safe here:
+    # assimp is statically linked into the extension and no CRT objects
+    # cross the python boundary.
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /J")
 endif()
 
