@@ -19,7 +19,11 @@ cd assimp_py
 python -m pip install .
 ```
 
-> **cmake>=3.18 is required for building from source**
+> **cmake>=4.0 is required for building from source**
+>
+> Building from source downloads the pinned ASSIMP release (v6.0.5) via CMake
+> FetchContent, so network access is required. For offline builds, point
+> `FETCHCONTENT_SOURCE_DIR_ASSIMP` at a local assimp source checkout.
 
 ## [Optional] Run tests to make sure everything works fine
 ```
@@ -108,4 +112,4 @@ traverse(root)
 
 > AMF 3DS AC ASE ASSBIN B3D BVH COLLADA DXF CSM HMP IRRMESH IRR LWO LWS M3D MD2 MD3 MD5 MDC MDL NFF NDO OFF OGRE OPENGEX PLY MS3D COB BLEND IFC XGL FBX Q3D Q3BSP RAW SIB SMD STL TERRAGEN 3D X X3D GLTF 3MF MMD OBJ
 
-> ASSIMP Version 5.4.3
+> ASSIMP Version 6.0.5
