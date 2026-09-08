@@ -11,9 +11,13 @@ if(UNIX AND NOT APPLE)
 else()
     if(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
         # Cross-compiled with -A ARM64 (cibuildwheel win_arm64 builds on amd64
-        # runners): no runnable ARM64 interpreter exists on the host, and the
-        # extension does not link the python library, so headers alone suffice
-        find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Development.Include)
+        # runners): FindPython rejects the x64 host interpreter for the ARM64
+        # target and no ARM64 python exists on the host. setup.py passes the
+        # arch-independent include dir via -DPython_INCLUDE_DIRS instead
+        # (the extension never links the python library on Windows).
+        if(NOT Python_INCLUDE_DIRS)
+            message(FATAL_ERROR "Python_INCLUDE_DIRS must be set for ARM64 cross builds")
+        endif()
     else()
         # XXX Gotcha for building multiple python versions on windows.
         find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development)

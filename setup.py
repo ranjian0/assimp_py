@@ -68,12 +68,12 @@ class CMakeBuild(build_ext):
             # cibuildwheel cross-compiles ARM64 wheels on amd64 runners;
             # select the ARM64 platform for the Visual Studio generator
             # (EXT_SUFFIX in extdir.name carries the target platform).
-            # The x64 interpreter cannot satisfy FindPython under the ARM64
-            # platform, so hint the (arch-independent) include dir directly.
+            # FindPython cannot be used for the ARM64 target (x64 host
+            # interpreter), so pass the arch-independent include dir directly.
             if 'win_arm64' in extdir.name:
                 cmake_args += [
                     '-A', 'ARM64',
-                    '-DPython_INCLUDE_DIR=' + sysconfig.get_paths()['include'],
+                    '-DPython_INCLUDE_DIRS=' + sysconfig.get_paths()['include'],
                 ]
 
         # Multicor build for dev
