@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 try:
@@ -12,6 +14,14 @@ except ImportError as e:
     pytest.fail(f"Failed to import the compiled assimp_py module: {e}", pytrace=False)
 
 from pathlib import Path
+
+# assimp's glTF2 loader decodes binary buffers without byte-swapping, so
+# skinned models load differently on big-endian hosts (e.g. s390x): bone
+# counts/names/durations do not match the little-endian references.
+big_endian = pytest.mark.skipif(
+    sys.byteorder == "big",
+    reason="assimp glTF2 skeletal data differs on big-endian hosts (upstream)",
+)
 
 FOX_MODEL = Path(__file__).parent.joinpath("models/fox/Fox.glb")
 PLANET_MODEL = Path(__file__).parent.joinpath("models/planet/planet.obj")
@@ -79,6 +89,7 @@ def fox_channel(fox_scene, anim_name, node_name):
 
 # --- Tests ---
 
+@big_endian
 class TestBones:
     def test_mesh_bone_counts(self, fox_mesh):
         """Mesh exposes bone list and count consistently."""
@@ -124,7 +135,9 @@ class TestBones:
             assert bone.armature_name is None
             assert bone.node_name is None
 
-    def test_bone_weights_empty_for_static_mesh(self):
+
+class TestStaticScene:
+    def test_static_mesh_has_no_bones(self):
         """A static (non-skinned) mesh exposes an empty bone list."""
         scene = assimp_py.import_file(str(PLANET_MODEL), assimp_py.Process_Triangulate)
         for mesh in scene.meshes:
@@ -162,6 +175,7 @@ class TestBoneWeights:
         np.testing.assert_allclose(sums, 1.0, atol=1e-5)
 
 
+@big_endian
 class TestAnimations:
     def test_scene_animation_counts(self, fox_scene):
         """Scene exposes animation list and count consistently."""
@@ -223,6 +237,8 @@ class TestAnimations:
                 assert channel.pre_state == assimp_py.AnimBehaviour_DEFAULT
                 assert channel.post_state == assimp_py.AnimBehaviour_DEFAULT
 
+
+class TestStaticAnimations:
     def test_animations_empty_for_static_mesh(self):
         """A scene without animations exposes an empty list."""
         scene = assimp_py.import_file(str(PLANET_MODEL), assimp_py.Process_Triangulate)
@@ -230,6 +246,7 @@ class TestAnimations:
         assert scene.num_animations == 0
 
 
+@big_endian
 @pytest.mark.skipif(not NUMPY_AVAILABLE, reason="NumPy not found, skipping memoryview tests")
 class TestAnimationKeys:
     def test_key_memoryviews(self, fox_scene):
@@ -295,6 +312,7 @@ class TestAnimationKeys:
         )
 
 
+@big_endian
 @pytest.mark.skipif(not NUMPY_AVAILABLE, reason="NumPy not found, skipping memoryview tests")
 class TestOwnership:
     def test_memoryviews_outlive_scene(self):

@@ -1,5 +1,13 @@
+import sys
 import pytest
 from pathlib import Path
+
+# assimp's glTF2 loader decodes binary buffers without byte-swapping; skinned
+# models load differently on big-endian hosts (e.g. s390x)
+big_endian = pytest.mark.skipif(
+    sys.byteorder == "big",
+    reason="assimp glTF2 skeletal data differs on big-endian hosts (upstream)",
+)
 
 try:
     import assimp_py
@@ -95,6 +103,7 @@ class TestPlanet:
       assert len(mat['TEXTURES'].values()) == 2
 
 
+@big_endian
 class TestFox:
   def test_fox_scene(self, fox):
       assert isinstance(fox, assimp_py.Scene)
