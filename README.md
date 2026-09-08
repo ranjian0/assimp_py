@@ -152,6 +152,20 @@ for anim in scene.animations:
 > `ticks_per_second` is `0.0` when the file does not specify it — treat the
 > duration as seconds in that case.
 
+# Demo
+
+An interactive demo renders the textured cyborg next to the GPU-skinned,
+animated fox (orbit camera, wireframe and skeleton overlays):
+
+```
+pip install assimp-py[demo]
+python examples/demo.py
+```
+
+Controls: `1/2/3` switch fox animations, `Space` pause, `F` wireframe,
+`B` skeleton overlay, mouse drag/wheel for the camera, `Esc` quit.
+Headless smoke run: `python examples/demo.py --screenshot demo.png`.
+
 # Supported Mesh Formats
 
 > AMF 3DS AC ASE ASSBIN B3D BVH COLLADA DXF CSM HMP IRRMESH IRR LWO LWS M3D MD2 MD3 MD5 MDC MDL NFF NDO OFF OGRE OPENGEX PLY MS3D COB BLEND IFC XGL FBX Q3D Q3BSP RAW SIB SMD STL TERRAGEN 3D X X3D GLTF 3MF MMD OBJ

@@ -12,6 +12,9 @@ test:
 profile:
 	python scripts/memprof.py
 
+demo:
+	python examples/demo.py
+
 .PHONY: clean
 
 clean:
