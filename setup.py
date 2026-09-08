@@ -64,6 +64,12 @@ class CMakeBuild(build_ext):
                 '-DCMAKE_RUNTIME_OUTPUT_DIRECTORY_{}={}'.format(cfg.upper(), str(extdir.parent.absolute())),
             ]
 
+            # cibuildwheel cross-compiles ARM64 wheels on amd64 runners;
+            # select the ARM64 platform for the Visual Studio generator
+            # (EXT_SUFFIX in extdir.name carries the target platform)
+            if 'win_arm64' in extdir.name:
+                cmake_args += ['-A', 'ARM64']
+
         # Multicor build for dev
         build_args = ['--config', cfg, '-j', str(multiprocessing.cpu_count())]
         self.spawn(['cmake', '-S', '.', '-B', str(build_temp)] + cmake_args)
