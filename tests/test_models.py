@@ -26,6 +26,17 @@ def planet():
     scn = assimp_py.import_file(str(model.absolute()), post_flags)
     yield scn
 
+
+@pytest.fixture(scope="module")
+def fox():
+    model = Path(__file__).parent.joinpath("models/fox/Fox.glb")
+    post_flags = (
+        assimp_py.Process_Triangulate
+        | assimp_py.Process_LimitBoneWeights
+    )
+    scn = assimp_py.import_file(str(model.absolute()), post_flags)
+    yield scn
+
 class TestCyborg:
   def test_cyborg_nodes(self, cyborg):
       assert isinstance(cyborg, assimp_py.Scene)
@@ -76,9 +87,25 @@ class TestPlanet:
   def test_planet_material(self, planet):
       assert planet.num_materials == 2 # Assimp creates a default material
 
-      mat = planet.materials[1] 
+      mat = planet.materials[1]
       assert isinstance(mat, dict)
       assert "NAME" in mat
       assert "TEXTURES" in mat
       assert "COLOR_DIFFUSE" in mat
       assert len(mat['TEXTURES'].values()) == 2
+
+
+class TestFox:
+  def test_fox_scene(self, fox):
+      assert isinstance(fox, assimp_py.Scene)
+      assert fox.num_meshes == 1
+
+  def test_fox_mesh(self, fox):
+      me = fox.meshes[0]
+      assert isinstance(me, assimp_py.Mesh)
+      assert me.num_vertices == 1728
+      assert me.num_bones == 24
+
+  def test_fox_animations(self, fox):
+      assert fox.num_animations == 3
+      assert {a.name for a in fox.animations} == {"Survey", "Walk", "Run"}
