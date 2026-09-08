@@ -97,7 +97,6 @@ jobs:
       CIBW_MANYLINUX_AARCH64_IMAGE: ${{ matrix.distro }}
       CIBW_MANYLINUX_S390X_IMAGE: ${{ matrix.distro }}
       CIBW_MANYLINUX_PPC64LE_IMAGE: ${{ matrix.distro }}
-      CIBW_BUILD: cp3*-manylinux*
       CIBW_ARCHS: ${{matrix.arch}}
 
     steps:
