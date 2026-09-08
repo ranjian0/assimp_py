@@ -31,15 +31,44 @@ if(MSVC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /J")
 endif()
 
-add_subdirectory(src/assimp)
+# Workaround: assimp's bundled zlib (1.2.13) fails to compile against Xcode >= 16.3
+# SDKs, where contrib/zlib/zutil.h's `#define fdopen(fd,mode) NULL` mangles the
+# SDK's fdopen declaration in stdio.h (https://github.com/assimp/assimp/issues/6118).
+# Pre-defining fdopen makes zutil.h's `#ifndef fdopen` guard skip the broken macro.
+if(APPLE)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Dfdopen=fdopen")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Dfdopen=fdopen")
+endif()
+
+# -- fetch assimp
+# For offline builds, point FETCHCONTENT_SOURCE_DIR_ASSIMP at a local assimp checkout
+include(FetchContent)
+FetchContent_Declare(assimp
+    URL https://github.com/assimp/assimp/archive/refs/tags/v6.0.5.tar.gz
+    URL_HASH SHA256=edf3749559c2b7d1f758ffb66fc5bec62186221e623b7f2e8969f17ee46ecb6f
+    SYSTEM
+)
+
+set(BUILD_SHARED_LIBS OFF)
+set(ASSIMP_BUILD_ZLIB ON)
+set(ASSIMP_BUILD_ASSIMP_TOOLS OFF)
+set(ASSIMP_BUILD_TESTS OFF)
+set(ASSIMP_WARNINGS_AS_ERRORS OFF)
+set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF)
+
+# XXX Uncomment the following lines to get lighter OBJ only build for development
+# set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF)
+# set(ASSIMP_BUILD_OBJ_IMPORTER ON)
+
+FetchContent_MakeAvailable(assimp)
 
 # build for universal2
-set_property(DIRECTORY src/assimp PROPERTY CMAKE_OSX_ARCHITECTURES "x86_64;arm64")
+set_property(DIRECTORY ${assimp_SOURCE_DIR} PROPERTY CMAKE_OSX_ARCHITECTURES "x86_64;arm64")
 
 # -- build the python extension
-include_directories(src/assimp/include ${PROJECT_BINARY_DIR}/src/assimp/include ${Python_INCLUDE_DIRS})
+include_directories(${assimp_SOURCE_DIR}/include ${assimp_BINARY_DIR}/include ${Python_INCLUDE_DIRS})
 link_directories(${Python_LIBRARY_DIRS})
-add_library(assimp_py SHARED src/assimp_py/assimp_py.c)
+add_library(assimp_py SHARED src/assimp_py.c)
 
 if(UNIX AND NOT APPLE)
     # For some reason, by default, we link to static zlib and rt,

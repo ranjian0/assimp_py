@@ -1,4 +1,6 @@
-prune **/ __pycache__ 
+prune **/__pycache__
 
+include CMakeLists.txt
+include src/assimp_py.c
 graft scripts
-graft src/assimp
+graft licenses

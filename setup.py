@@ -53,18 +53,6 @@ class CMakeBuild(build_ext):
             # This is the only reliable way I could find to get extension name on all platforms
             # Used within CMakeLists.txt
             '-DEXTENSION_NAME='+ str(extdir.name),
-
-            # Assimp Flags
-            '-DASSIMP_BUILD_ZLIB=ON',
-            '-DBUILD_SHARED_LIBS=OFF',
-            '-DASSIMP_BUILD_ASSIMP_TOOLS=OFF',
-            '-DASSIMP_BUILD_TESTS=OFF',
-            '-DASSIMP_WARNINGS_AS_ERRORS=OFF',
-            '-DASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT=FALSE',
-
-            # XXX Uncomment the following lines to get lighter OBJ only build for development
-            # '-DASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT=FALSE',
-            # '-DASSIMP_BUILD_OBJ_IMPORTER=TRUE'
         ]
 
 
@@ -85,13 +73,8 @@ class CMakeBuild(build_ext):
 setup(
     packages=['assimp_py'],
     package_dir={'': 'src'},
-    ext_modules=[CMakeExtension("assimp_py.assimp_py", sourcedir="src/assimp")],
+    ext_modules=[CMakeExtension("assimp_py.assimp_py")],
     cmdclass={
         'build_ext': CMakeBuild,
     },
-    exclude_package_data={
-        'assimp_py': [
-            '*.c',
-        ]
-    }
 )
