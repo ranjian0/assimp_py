@@ -291,3 +291,26 @@ class TestAnimationKeys:
             [0.12769122421741486, -0.6954819560050964, -0.12769056856632233, 0.6954817771911621],
             atol=1e-6,
         )
+
+
+@pytest.mark.skipif(not NUMPY_AVAILABLE, reason="NumPy not found, skipping memoryview tests")
+class TestOwnership:
+    def test_memoryviews_outlive_scene(self):
+        """Data is copied: memoryviews stay valid after the Scene is released."""
+        import gc
+
+        scene = assimp_py.import_file(str(FOX_MODEL), SKELETAL_FLAGS)
+        bone = scene.meshes[0].bones[0]
+        channel = scene.animations[0].channels[0]
+
+        expected_weights = np.frombuffer(bone.weights, dtype=np.float32).copy()
+        expected_times = np.frombuffer(channel.position_key_times, dtype=np.float64).copy()
+        weights_view = bone.weights
+        times_view = channel.position_key_times
+
+        del bone, channel, scene
+        gc.collect()
+
+        # views must still reference the original (copied) data
+        np.testing.assert_array_equal(np.frombuffer(weights_view, dtype=np.float32), expected_weights)
+        np.testing.assert_array_equal(np.frombuffer(times_view, dtype=np.float64), expected_times)

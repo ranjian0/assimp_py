@@ -115,8 +115,7 @@ static void Bone_dealloc(Bone *self) {
     Py_CLEAR(self->weight_vertex_ids);
     Py_CLEAR(self->armature_name);
     Py_CLEAR(self->node_name);
-    free(self->c_weights);
-    free(self->c_weight_ids);
+    // c_weights / c_weight_ids are owned by BufferKeeper objects
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -201,12 +200,7 @@ static void NodeAnim_dealloc(NodeAnim *self) {
     Py_CLEAR(self->rotation_key_values);
     Py_CLEAR(self->scaling_key_times);
     Py_CLEAR(self->scaling_key_values);
-    free(self->c_pos_times);
-    free(self->c_pos_values);
-    free(self->c_rot_times);
-    free(self->c_rot_values);
-    free(self->c_scale_times);
-    free(self->c_scale_values);
+    // key time/value arrays are owned by BufferKeeper objects
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -369,25 +363,11 @@ static void Mesh_dealloc(Mesh *self) {
     Py_CLEAR(self->texcoords);
     Py_CLEAR(self->bones);
 
-    // Free C arrays
-    free(self->c_indices);
-    free(self->c_vertices);
-    free(self->c_normals);
-    free(self->c_tangents);
-    free(self->c_bitangents);
-    if (self->c_colors) {
-        for (unsigned int i = 0; i < self->num_color_sets; ++i) {
-            free(self->c_colors[i]);
-        }
-        free(self->c_colors);
-    }
-    if (self->c_texcoords) {
-        for (unsigned int i = 0; i < self->num_texcoord_sets; ++i) {
-            free(self->c_texcoords[i]);
-        }
-        free(self->c_texcoords);
-    }
+    // Buffer data itself is owned by BufferKeeper objects referenced by
+    // the memoryviews; only plain arrays without views are freed here
     free(self->c_num_uv_components);
+    free(self->c_colors);      // the array of pointers only
+    free(self->c_texcoords);   // the array of pointers only
 
 
     // Free the object itself
@@ -487,7 +467,72 @@ static PyTypeObject SceneType = {
 
 // --- Helper Functions ---
 
+// --- BufferKeeper Type ---
+// Internal type that owns a malloc'd buffer and exports it through the
+// buffer protocol. memoryviews created over a keeper keep it alive
+// (view -> managed buffer -> keeper), so exported data stays valid even
+// if the owning Mesh/Bone/NodeAnim is deallocated. The buffer is freed
+// when the last reference (keeper or view) dies.
+typedef struct {
+    PyObject_HEAD
+    void *data;              // malloc'd buffer, owned
+    Py_ssize_t len_bytes;
+    Py_ssize_t itemsize;
+    const char *format;      // string literal ("f", "d", "I"), persists
+    Py_ssize_t shape[1];     // lives inside the keeper object
+    Py_ssize_t strides[1];
+} BufferKeeper;
+
+static int keeper_getbuffer(BufferKeeper *self, Py_buffer *view, int flags) {
+    if (view == NULL) {
+        // flags query: read-only simple buffers only
+        return (flags & PyBUF_WRITABLE) ? 1 : 0;
+    }
+    if (flags & PyBUF_WRITABLE) {
+        PyErr_SetString(PyExc_BufferError, "BufferKeeper buffers are read-only");
+        return -1;
+    }
+    if (self->data == NULL) {
+        PyErr_SetString(PyExc_BufferError, "BufferKeeper: buffer is empty");
+        return -1;
+    }
+    view->buf = self->data;
+    view->obj = (PyObject *)self;
+    Py_INCREF(self); // the buffer protocol contract: new reference in view->obj
+    view->len = self->len_bytes;
+    view->itemsize = self->itemsize;
+    view->readonly = 1;
+    view->ndim = 1;
+    view->format = (flags & PyBUF_FORMAT) ? (char *)self->format : NULL;
+    view->shape = (flags & PyBUF_ND) ? self->shape : NULL;
+    view->strides = (flags & PyBUF_STRIDES) ? self->strides : NULL;
+    view->suboffsets = NULL;
+    return 0;
+}
+
+static void keeper_dealloc(BufferKeeper *self) {
+    free(self->data);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+static PyBufferProcs keeper_as_buffer = {
+    .bf_getbuffer = (getbufferproc)keeper_getbuffer,
+};
+
+static PyTypeObject BufferKeeperType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "assimp_py._BufferKeeper",
+    .tp_doc = "Internal buffer owner for exported memoryviews",
+    .tp_basicsize = sizeof(BufferKeeper),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_dealloc = (destructor)keeper_dealloc,
+    .tp_as_buffer = &keeper_as_buffer,
+};
+
 // Safely create a memory view from a C array. Returns new reference or NULL on error.
+// Ownership of `data` transfers to a BufferKeeper referenced by the view:
+// the memory is freed when the last view over it is released.
 static PyObject* create_memoryview(void* data, Py_ssize_t len_bytes, const char* format, Py_ssize_t itemsize) {
     if (!data) {
         Py_RETURN_NONE; // Return None if the C data pointer is NULL
@@ -506,44 +551,20 @@ static PyObject* create_memoryview(void* data, Py_ssize_t len_bytes, const char*
         return NULL;
     }
 
-    Py_ssize_t num_elements = len_bytes / itemsize;
+    BufferKeeper *keeper = (BufferKeeper *)BufferKeeperType.tp_alloc(&BufferKeeperType, 0);
+    if (!keeper) return NULL;
 
-    Py_buffer buf_info;
-    // Allocate shape and strides arrays (needed by PyMemoryView_FromBuffer)
-    // For 1D array, we only need arrays of size 1
-    Py_ssize_t shape[1] = { num_elements };
-    Py_ssize_t strides[1] = { itemsize }; // Simple stride for contiguous data
+    keeper->data = data;
+    keeper->len_bytes = len_bytes;
+    keeper->itemsize = itemsize;
+    keeper->format = format;
+    keeper->shape[0] = len_bytes / itemsize;
+    keeper->strides[0] = itemsize;
 
-    // Manually initialize the Py_buffer struct
-    // Start by zeroing it out
-    memset(&buf_info, 0, sizeof(Py_buffer));
-
-    buf_info.buf = data;              // Pointer to the data buffer
-    buf_info.obj = NULL;              // We own the memory (malloc'd), no base Python object
-    buf_info.len = len_bytes;         // Total length in bytes
-    buf_info.itemsize = itemsize;     // Size of one item
-    buf_info.readonly = 1;            // Make it read-only
-    buf_info.ndim = 1;                // Number of dimensions
-    buf_info.format = (char*)format;  // Format string (cast needed)
-    buf_info.shape = shape;           // Pointer to shape array {num_elements}
-    buf_info.strides = strides;       // Pointer to strides array {itemsize}
-    buf_info.suboffsets = NULL;       // Not needed for simple buffers
-    buf_info.internal = NULL;         // Reserved
-
-    // Create the memoryview from the manually populated buffer structure
-    PyObject *memview = PyMemoryView_FromBuffer(&buf_info);
-    if (!memview) {
-        // Error should be set by PyMemoryView_FromBuffer
-        return NULL;
-    }
-
-    // Note: PyMemoryView_FromBuffer creates the memoryview object.
-    // The 'buf_info' struct itself is used during creation but doesn't
-    // need to persist after the memoryview object exists, as the relevant
-    // info is copied or managed internally by the memoryview object.
-    // The shape and strides arrays declared on the stack are sufficient here.
-
-    return memview; // Return new reference
+    // The view (via its managed buffer) holds a strong reference to the keeper
+    PyObject *memview = PyMemoryView_FromObject((PyObject *)keeper);
+    Py_DECREF(keeper);
+    return memview;
 }
 
 // Helper to create a Python list of floats from a C array of aiColor4D
@@ -1594,6 +1615,7 @@ PyMODINIT_FUNC PyInit_assimp_py(void) {
     PyObject *module = NULL;
 
     // Initialize Types
+    if (PyType_Ready(&BufferKeeperType) < 0) return NULL;
     if (PyType_Ready(&MeshType) < 0) return NULL;
     if (PyType_Ready(&SceneType) < 0) return NULL;
     if (PyType_Ready(&NodeType) < 0) return NULL;
