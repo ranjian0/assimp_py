@@ -70,6 +70,13 @@ def _collect_node_names(node, names=None):
     return names
 
 
+def fox_channel(fox_scene, anim_name, node_name):
+    """Channel lookup by node name; order is not stable across platforms
+    (assimp stores channels in an unordered map)."""
+    by_name = {a.name: a for a in fox_scene.animations}
+    return {ch.node_name: ch for ch in by_name[anim_name].channels}[node_name]
+
+
 # --- Tests ---
 
 class TestBones:
@@ -190,23 +197,20 @@ class TestAnimations:
                 assert isinstance(channel, assimp_py.NodeAnim)
                 assert isinstance(channel.node_name, str) and channel.node_name
 
-        survey = {a.name: a for a in fox_scene.animations}["Survey"]
-        assert survey.channels[0].node_name == FOX_HIP_CHANNEL
+        assert FOX_HIP_CHANNEL in {ch.node_name for ch in fox_scene.animations[0].channels}
 
     def test_channel_key_counts(self, fox_scene):
         """Key counts pinned from the Fox file."""
-        by_name = {anim.name: anim for anim in fox_scene.animations}
-
-        survey_hip = by_name["Survey"].channels[0]
+        survey_hip = fox_channel(fox_scene, "Survey", FOX_HIP_CHANNEL)
         assert survey_hip.num_position_keys == FOX_SURVEY_HIP_KEYS
         assert survey_hip.num_rotation_keys == FOX_SURVEY_HIP_KEYS
         assert survey_hip.num_scaling_keys == 1
 
-        walk_hip = by_name["Walk"].channels[0]
+        walk_hip = fox_channel(fox_scene, "Walk", FOX_HIP_CHANNEL)
         assert walk_hip.num_position_keys == 18
         assert walk_hip.num_rotation_keys == 18
 
-        run_hip = by_name["Run"].channels[0]
+        run_hip = fox_channel(fox_scene, "Run", FOX_HIP_CHANNEL)
         assert run_hip.num_position_keys == 25
         assert run_hip.num_rotation_keys == 25
 
@@ -230,8 +234,7 @@ class TestAnimations:
 class TestAnimationKeys:
     def test_key_memoryviews(self, fox_scene):
         """Key tracks are read-only memoryviews with documented formats."""
-        by_name = {anim.name: anim for anim in fox_scene.animations}
-        hip = by_name["Survey"].channels[0]
+        hip = fox_channel(fox_scene, "Survey", FOX_HIP_CHANNEL)
 
         times = hip.position_key_times
         values = hip.position_key_values
@@ -275,8 +278,7 @@ class TestAnimationKeys:
 
     def test_pinned_key_values(self, fox_scene):
         """First position/rotation key values pinned from the Fox file."""
-        by_name = {anim.name: anim for anim in fox_scene.animations}
-        hip = by_name["Survey"].channels[0]
+        hip = fox_channel(fox_scene, "Survey", FOX_HIP_CHANNEL)
 
         first_pos = np.frombuffer(hip.position_key_values, dtype=np.float32)[:3]
         np.testing.assert_allclose(
