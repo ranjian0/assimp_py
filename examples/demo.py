@@ -706,12 +706,14 @@ class Demo:
             self.draw_skeleton(fox_globals, vp)
 
         fps = self.clock.get_fps()
-        self.draw_hud([
+        lines = [
             f"anim: {self.current} [{self.anim_order.index(self.current) + 1}/{len(self.anim_order)}]",
             "paused" if self.paused else f"t={tick:.0f}/{duration:.0f}",
-            f"{fps:.0f} fps",
-            "F wire  B bones",
-        ])
+        ]
+        if fps > 1:  # headless capture never ticks the clock
+            lines.append(f"{fps:.0f} fps")
+        lines.append("F wire  B bones")
+        self.draw_hud(lines)
 
     # --- events ---
 
@@ -772,11 +774,40 @@ class Demo:
         print(f"saved screenshot: {out} ({frames} frames simulated)")
         pygame.quit()
 
+    def run_gif(self, path, fps=20):
+        """Capture a README-ready gif: a segment of each fox animation,
+        skeleton overlay on, HUD fps hidden (clock is not ticking headless)."""
+        from PIL import Image
+
+        sequence = [("Survey", 1.4), ("Walk", 1.8), ("Run", 1.8)]
+        self.show_skeleton = True
+
+        frames = []
+        for anim_name, seconds in sequence:
+            self.current = anim_name
+            self.sim_time = 0.0
+            for _ in range(int(seconds * fps)):
+                self.frame(1.0 / fps)
+                data = self.ctx.fbo.read(components=3)  # read before flip
+                frames.append(
+                    Image.frombytes("RGB", self.size, data).transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+                )
+                pygame.display.flip()
+
+        duration_ms = int(1000 / fps)
+        frames[0].save(path, save_all=True, append_images=frames[1:],
+                       duration=duration_ms, loop=0, optimize=True)
+        size_mb = path.stat().st_size / (1024 * 1024)
+        print(f"saved gif: {path} ({len(frames)} frames, {size_mb:.2f} MB)")
+        pygame.quit()
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--screenshot", metavar="PNG", default=None,
                         help="headless: render --frames frames and save a screenshot, then exit")
+    parser.add_argument("--gif", metavar="GIF", default=None,
+                        help="headless: capture a demo gif (Survey/Walk/Run with skeleton) and exit")
     parser.add_argument("--frames", type=int, default=90, help="frames to simulate before screenshot")
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=720)
@@ -789,6 +820,8 @@ def main():
     demo = Demo(args)
     if args.screenshot:
         demo.run_screenshot(args.frames)
+    elif args.gif:
+        demo.run_gif(Path(args.gif))
     else:
         demo.run()
 

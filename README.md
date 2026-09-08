@@ -4,6 +4,9 @@
 
 Minimal Python Bindings for ASSIMP Library using C-API
 
+<p align="center">
+  <img src="examples/demo.gif" alt="assimp-py demo: textured cyborg + GPU-skinned animated fox with skeleton overlay" width="640"/>
+</p>
 
 # Installation
 
