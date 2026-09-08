@@ -4,6 +4,7 @@ import pathlib
 import platform
 import sysconfig
 import subprocess
+import configparser
 import multiprocessing
 
 from setuptools import setup, Extension, find_packages
@@ -75,6 +76,18 @@ class CMakeBuild(build_ext):
                     '-A', 'ARM64',
                     '-DPython_INCLUDE_DIRS=' + sysconfig.get_paths()['include'],
                 ]
+
+                # pyconfig.h pragma-references python3XX.lib under MSVC; the
+                # ARM64 import libs are published via cibuildwheel's
+                # DIST_EXTRA_CONFIG ([build_ext] library_dirs)
+                dist_cfg = os.environ.get('DIST_EXTRA_CONFIG')
+                if dist_cfg and os.path.exists(dist_cfg):
+                    parser = configparser.ConfigParser()
+                    parser.read(dist_cfg)
+                    if parser.has_option('build_ext', 'library_dirs'):
+                        cmake_args += [
+                            '-DPython_LIBRARY_DIRS=' + parser.get('build_ext', 'library_dirs'),
+                        ]
 
         # Multicor build for dev
         build_args = ['--config', cfg, '-j', str(multiprocessing.cpu_count())]
