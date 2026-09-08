@@ -9,8 +9,15 @@ if(UNIX AND NOT APPLE)
     # Uncomment for local builds 😩
     # find_package(Python REQUIRED COMPONENTS Interpreter Development)
 else()
-    # XXX Gotcha for building multiple python versions on windows.
-    find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development)
+    if(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
+        # Cross-compiled with -A ARM64 (cibuildwheel win_arm64 builds on amd64
+        # runners): no runnable ARM64 interpreter exists on the host, and the
+        # extension does not link the python library, so headers alone suffice
+        find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Development.Include)
+    else()
+        # XXX Gotcha for building multiple python versions on windows.
+        find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development)
+    endif()
 endif()
 
 # build for universal2
