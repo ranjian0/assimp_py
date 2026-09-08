@@ -9,8 +9,19 @@ if(UNIX AND NOT APPLE)
     # Uncomment for local builds 😩
     # find_package(Python REQUIRED COMPONENTS Interpreter Development)
 else()
-    # XXX Gotcha for building multiple python versions on windows.
-    find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development)
+    if(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
+        # Cross-compiled with -A ARM64 (cibuildwheel win_arm64 builds on amd64
+        # runners): FindPython rejects the x64 host interpreter for the ARM64
+        # target and no ARM64 python exists on the host. setup.py passes the
+        # arch-independent include dir via -DPython_INCLUDE_DIRS instead
+        # (the extension never links the python library on Windows).
+        if(NOT Python_INCLUDE_DIRS)
+            message(FATAL_ERROR "Python_INCLUDE_DIRS must be set for ARM64 cross builds")
+        endif()
+    else()
+        # XXX Gotcha for building multiple python versions on windows.
+        find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development)
+    endif()
 endif()
 
 # build for universal2
@@ -28,6 +39,12 @@ if(CMAKE_COMPILER_IS_GNUCC)
 endif()
 
 if(MSVC)
+    # Statically link the CRT so wheels are hermetic: no dependency on
+    # msvcp140.dll/vcruntime140.dll (whose ARM64 variants do not exist on
+    # cross-build hosts) and nothing for delvewheel to vendor. Safe here:
+    # assimp is statically linked into the extension and no CRT objects
+    # cross the python boundary.
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /J")
 endif()
 

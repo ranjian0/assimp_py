@@ -2,7 +2,9 @@ import os
 import sys
 import pathlib
 import platform
+import sysconfig
 import subprocess
+import configparser
 import multiprocessing
 
 from setuptools import setup, Extension, find_packages
@@ -66,9 +68,26 @@ class CMakeBuild(build_ext):
 
             # cibuildwheel cross-compiles ARM64 wheels on amd64 runners;
             # select the ARM64 platform for the Visual Studio generator
-            # (EXT_SUFFIX in extdir.name carries the target platform)
+            # (EXT_SUFFIX in extdir.name carries the target platform).
+            # FindPython cannot be used for the ARM64 target (x64 host
+            # interpreter), so pass the arch-independent include dir directly.
             if 'win_arm64' in extdir.name:
-                cmake_args += ['-A', 'ARM64']
+                cmake_args += [
+                    '-A', 'ARM64',
+                    '-DPython_INCLUDE_DIRS=' + sysconfig.get_paths()['include'],
+                ]
+
+                # pyconfig.h pragma-references python3XX.lib under MSVC; the
+                # ARM64 import libs are published via cibuildwheel's
+                # DIST_EXTRA_CONFIG ([build_ext] library_dirs)
+                dist_cfg = os.environ.get('DIST_EXTRA_CONFIG')
+                if dist_cfg and os.path.exists(dist_cfg):
+                    parser = configparser.ConfigParser()
+                    parser.read(dist_cfg)
+                    if parser.has_option('build_ext', 'library_dirs'):
+                        cmake_args += [
+                            '-DPython_LIBRARY_DIRS=' + parser.get('build_ext', 'library_dirs'),
+                        ]
 
         # Multicor build for dev
         build_args = ['--config', cfg, '-j', str(multiprocessing.cpu_count())]
