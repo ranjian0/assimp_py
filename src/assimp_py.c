@@ -9,11 +9,15 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 #include <assimp/material.h>
+#include <assimp/anim.h>
 
 // Forward declarations for type objects
 static PyTypeObject MeshType;
 static PyTypeObject SceneType;
 static PyTypeObject NodeType;
+static PyTypeObject BoneType;
+static PyTypeObject AnimationType;
+static PyTypeObject NodeAnimType;
 
 // --- Node Type Definition ---
 typedef struct Node {
@@ -74,6 +78,216 @@ static PyTypeObject NodeType = {
 };
 
 
+// --- Bone Type Definition ---
+typedef struct {
+    PyObject_HEAD
+    PyObject *name;              // PyUnicodeObject
+    PyObject *offset_matrix;     // Tuple[Tuple[float,...],...] (4x4 matrix)
+    PyObject *weights;           // PyMemoryView (float32, N) or None
+    PyObject *weight_vertex_ids; // PyMemoryView (uint32, N) or None
+    PyObject *armature_name;     // PyUnicodeObject or None (requires Process_PopulateArmatureData)
+    PyObject *node_name;         // PyUnicodeObject or None (requires Process_PopulateArmatureData)
+
+    unsigned int num_weights;
+
+    // --- C Data Pointers (managed internally) ---
+    float *c_weights;
+    unsigned int *c_weight_ids;
+} Bone;
+
+static int Bone_init(Bone *self, PyObject *args, PyObject *kwds) {
+    self->name = NULL;
+    self->offset_matrix = NULL;
+    self->weights = NULL;
+    self->weight_vertex_ids = NULL;
+    self->armature_name = NULL;
+    self->node_name = NULL;
+    self->num_weights = 0;
+    self->c_weights = NULL;
+    self->c_weight_ids = NULL;
+    return 0;
+}
+
+static void Bone_dealloc(Bone *self) {
+    Py_CLEAR(self->name);
+    Py_CLEAR(self->offset_matrix);
+    Py_CLEAR(self->weights);
+    Py_CLEAR(self->weight_vertex_ids);
+    Py_CLEAR(self->armature_name);
+    Py_CLEAR(self->node_name);
+    free(self->c_weights);
+    free(self->c_weight_ids);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+static PyMemberDef Bone_members[] = {
+    {"name", T_OBJECT_EX, offsetof(Bone, name), READONLY, "Bone name"},
+    {"offset_matrix", T_OBJECT_EX, offsetof(Bone, offset_matrix), READONLY, "Mesh-to-bone bind pose matrix (tuple of tuples, 4x4)"},
+    {"num_weights", T_UINT, offsetof(Bone, num_weights), READONLY, "Number of vertex weights"},
+    {"weights", T_OBJECT_EX, offsetof(Bone, weights), READONLY, "Influence strengths (memoryview, float32, N)"},
+    {"weight_vertex_ids", T_OBJECT_EX, offsetof(Bone, weight_vertex_ids), READONLY, "Vertex indices parallel to weights (memoryview, uint32, N)"},
+    {"armature_name", T_OBJECT_EX, offsetof(Bone, armature_name), READONLY, "Name of the armature root node (str or None; requires Process_PopulateArmatureData)"},
+    {"node_name", T_OBJECT_EX, offsetof(Bone, node_name), READONLY, "Name of the scene node matching this bone (str or None; requires Process_PopulateArmatureData)"},
+    {NULL} /* Sentinel */
+};
+
+static PyTypeObject BoneType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "assimp_py.Bone",
+    .tp_doc = "Bone of a mesh: bind pose offset matrix and vertex weights",
+    .tp_basicsize = sizeof(Bone),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_new = PyType_GenericNew,
+    .tp_init = (initproc)Bone_init,
+    .tp_dealloc = (destructor)Bone_dealloc,
+    .tp_members = Bone_members,
+};
+
+
+// --- NodeAnim Type Definition ---
+typedef struct {
+    PyObject_HEAD
+    PyObject *node_name;          // PyUnicodeObject
+    PyObject *position_key_times; // PyMemoryView (float64, N) or None
+    PyObject *position_key_values;// PyMemoryView (float32, N*3) or None
+    PyObject *rotation_key_times; // PyMemoryView (float64, N) or None
+    PyObject *rotation_key_values;// PyMemoryView (float32, N*4) or None
+    PyObject *scaling_key_times;  // PyMemoryView (float64, N) or None
+    PyObject *scaling_key_values; // PyMemoryView (float32, N*3) or None
+
+    unsigned int num_position_keys;
+    unsigned int num_rotation_keys;
+    unsigned int num_scaling_keys;
+    unsigned int pre_state;       // aiAnimBehaviour (AnimBehaviour_* constants)
+    unsigned int post_state;      // aiAnimBehaviour
+
+    // --- C Data Pointers (managed internally) ---
+    double *c_pos_times;
+    float  *c_pos_values;
+    double *c_rot_times;
+    float  *c_rot_values;
+    double *c_scale_times;
+    float  *c_scale_values;
+} NodeAnim;
+
+static int NodeAnim_init(NodeAnim *self, PyObject *args, PyObject *kwds) {
+    self->node_name = NULL;
+    self->position_key_times = NULL;
+    self->position_key_values = NULL;
+    self->rotation_key_times = NULL;
+    self->rotation_key_values = NULL;
+    self->scaling_key_times = NULL;
+    self->scaling_key_values = NULL;
+    self->num_position_keys = 0;
+    self->num_rotation_keys = 0;
+    self->num_scaling_keys = 0;
+    self->pre_state = 0;
+    self->post_state = 0;
+    self->c_pos_times = NULL;
+    self->c_pos_values = NULL;
+    self->c_rot_times = NULL;
+    self->c_rot_values = NULL;
+    self->c_scale_times = NULL;
+    self->c_scale_values = NULL;
+    return 0;
+}
+
+static void NodeAnim_dealloc(NodeAnim *self) {
+    Py_CLEAR(self->node_name);
+    Py_CLEAR(self->position_key_times);
+    Py_CLEAR(self->position_key_values);
+    Py_CLEAR(self->rotation_key_times);
+    Py_CLEAR(self->rotation_key_values);
+    Py_CLEAR(self->scaling_key_times);
+    Py_CLEAR(self->scaling_key_values);
+    free(self->c_pos_times);
+    free(self->c_pos_values);
+    free(self->c_rot_times);
+    free(self->c_rot_values);
+    free(self->c_scale_times);
+    free(self->c_scale_values);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+static PyMemberDef NodeAnim_members[] = {
+    {"node_name", T_OBJECT_EX, offsetof(NodeAnim, node_name), READONLY, "Name of the node/bone this channel animates"},
+    {"num_position_keys", T_UINT, offsetof(NodeAnim, num_position_keys), READONLY, "Number of position keys"},
+    {"position_key_times", T_OBJECT_EX, offsetof(NodeAnim, position_key_times), READONLY, "Position key times (memoryview, float64, N)"},
+    {"position_key_values", T_OBJECT_EX, offsetof(NodeAnim, position_key_values), READONLY, "Position key values (memoryview, float32, Nx3)"},
+    {"num_rotation_keys", T_UINT, offsetof(NodeAnim, num_rotation_keys), READONLY, "Number of rotation keys"},
+    {"rotation_key_times", T_OBJECT_EX, offsetof(NodeAnim, rotation_key_times), READONLY, "Rotation key times (memoryview, float64, N)"},
+    {"rotation_key_values", T_OBJECT_EX, offsetof(NodeAnim, rotation_key_values), READONLY, "Rotation key quaternions (memoryview, float32, Nx4 as x,y,z,w)"},
+    {"num_scaling_keys", T_UINT, offsetof(NodeAnim, num_scaling_keys), READONLY, "Number of scaling keys"},
+    {"scaling_key_times", T_OBJECT_EX, offsetof(NodeAnim, scaling_key_times), READONLY, "Scaling key times (memoryview, float64, N)"},
+    {"scaling_key_values", T_OBJECT_EX, offsetof(NodeAnim, scaling_key_values), READONLY, "Scaling key values (memoryview, float32, Nx3)"},
+    {"pre_state", T_UINT, offsetof(NodeAnim, pre_state), READONLY, "Behaviour before the first key (AnimBehaviour_*)"},
+    {"post_state", T_UINT, offsetof(NodeAnim, post_state), READONLY, "Behaviour after the last key (AnimBehaviour_*)"},
+    {NULL} /* Sentinel */
+};
+
+static PyTypeObject NodeAnimType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "assimp_py.NodeAnim",
+    .tp_doc = "Animation channel for a single node: position/rotation/scaling keyframes",
+    .tp_basicsize = sizeof(NodeAnim),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_new = PyType_GenericNew,
+    .tp_init = (initproc)NodeAnim_init,
+    .tp_dealloc = (destructor)NodeAnim_dealloc,
+    .tp_members = NodeAnim_members,
+};
+
+
+// --- Animation Type Definition ---
+typedef struct {
+    PyObject_HEAD
+    PyObject *name;      // PyUnicodeObject
+    PyObject *channels;  // PyList of NodeAnim
+    unsigned int num_channels;
+    double duration;           // aiAnimation::mDuration
+    double ticks_per_second;   // aiAnimation::mTicksPerSecond (0.0 = unspecified)
+} Animation;
+
+static int Animation_init(Animation *self, PyObject *args, PyObject *kwds) {
+    self->name = NULL;
+    self->channels = NULL;
+    self->num_channels = 0;
+    self->duration = 0.0;
+    self->ticks_per_second = 0.0;
+    return 0;
+}
+
+static void Animation_dealloc(Animation *self) {
+    Py_CLEAR(self->name);
+    Py_CLEAR(self->channels);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+static PyMemberDef Animation_members[] = {
+    {"name", T_OBJECT_EX, offsetof(Animation, name), READONLY, "Animation name"},
+    {"duration", T_DOUBLE, offsetof(Animation, duration), READONLY, "Duration in ticks"},
+    {"ticks_per_second", T_DOUBLE, offsetof(Animation, ticks_per_second), READONLY, "Ticks per second (0.0 = same as duration, i.e. seconds)"},
+    {"num_channels", T_UINT, offsetof(Animation, num_channels), READONLY, "Number of animation channels"},
+    {"channels", T_OBJECT_EX, offsetof(Animation, channels), READONLY, "List of NodeAnim channels"},
+    {NULL} /* Sentinel */
+};
+
+static PyTypeObject AnimationType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "assimp_py.Animation",
+    .tp_doc = "Animation: key-frame channels for a number of nodes",
+    .tp_basicsize = sizeof(Animation),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_new = PyType_GenericNew,
+    .tp_init = (initproc)Animation_init,
+    .tp_dealloc = (destructor)Animation_dealloc,
+    .tp_members = Animation_members,
+};
+
+
 // --- Mesh Type Definition ---
 typedef struct {
     PyObject_HEAD
@@ -87,6 +301,7 @@ typedef struct {
     PyObject *bitangents;       // PyMemoryView (float32 x 3) or None
     PyObject *colors;           // List of PyMemoryView (float32 x 4) or None
     PyObject *texcoords;        // List of PyMemoryView (float32 x N) or None
+    PyObject *bones;            // PyList of Bone (empty list if no bones)
 
     // --- C Data Pointers (managed internally) ---
     // We store these to manage the lifetime of the memory backing the memoryviews
@@ -105,6 +320,7 @@ typedef struct {
     unsigned int material_index;
     unsigned int num_color_sets;
     unsigned int num_texcoord_sets;
+    unsigned int num_bones;
     unsigned int *c_num_uv_components; // Array for UV component counts
 
 } Mesh;
@@ -120,8 +336,7 @@ static int Mesh_init(Mesh *self, PyObject *args, PyObject *kwds) {
     self->bitangents = NULL;
     self->colors = NULL;
     self->texcoords = NULL;
-
-    // Initialize C pointers to NULL and counts to 0
+    self->bones = NULL;
     self->c_indices = NULL;
     self->c_vertices = NULL;
     self->c_normals = NULL;
@@ -137,6 +352,7 @@ static int Mesh_init(Mesh *self, PyObject *args, PyObject *kwds) {
     self->material_index = 0;
     self->num_color_sets = 0;
     self->num_texcoord_sets = 0;
+    self->num_bones = 0;
     return 0;
 }
 
@@ -151,6 +367,7 @@ static void Mesh_dealloc(Mesh *self) {
     Py_CLEAR(self->bitangents);
     Py_CLEAR(self->colors);
     Py_CLEAR(self->texcoords);
+    Py_CLEAR(self->bones);
 
     // Free C arrays
     free(self->c_indices);
@@ -193,6 +410,8 @@ static PyMemberDef Mesh_members[] = {
     {"colors", T_OBJECT_EX, offsetof(Mesh, colors), READONLY, "List of vertex color sets (list of memoryview, float32, Nx4 or None)"},
     {"texcoords", T_OBJECT_EX, offsetof(Mesh, texcoords), READONLY, "List of vertex texture coordinate sets (list of memoryview, float32, NxNcomp or None)"},
     {"num_uv_components", T_OBJECT_EX, offsetof(Mesh, num_uv_components), READONLY, "List of component counts for each texcoord set"},
+    {"num_bones", T_UINT, offsetof(Mesh, num_bones), READONLY, "Number of bones"},
+    {"bones", T_OBJECT_EX, offsetof(Mesh, bones), READONLY, "List of Bone objects (empty list if the mesh has no bones)"},
     {NULL} /* Sentinel */
 };
 
@@ -216,16 +435,20 @@ typedef struct {
     PyObject *meshes;     // List of Mesh objects
     PyObject *materials;  // List of Material dictionaries
     PyObject *root_node;
+    PyObject *animations; // List of Animation objects (empty list if none)
     unsigned int num_meshes;
     unsigned int num_materials;
+    unsigned int num_animations;
 } Scene;
 
 static int Scene_init(Scene *self, PyObject *args, PyObject *kwds) {
     self->meshes = NULL;
     self->materials = NULL;
     self->root_node = NULL;
+    self->animations = NULL;
     self->num_meshes = 0;
     self->num_materials = 0;
+    self->num_animations = 0;
     return 0;
 }
 
@@ -233,6 +456,7 @@ static void Scene_dealloc(Scene *self) {
     Py_CLEAR(self->meshes);
     Py_CLEAR(self->materials);
     Py_CLEAR(self->root_node);
+    Py_CLEAR(self->animations);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -242,6 +466,8 @@ static PyMemberDef Scene_members[] = {
     {"root_node", T_OBJECT_EX, offsetof(Scene, root_node), READONLY, "Root node of the scene hierarchy"},
     {"num_meshes", T_UINT, offsetof(Scene, num_meshes), READONLY, "Number of meshes"},
     {"num_materials", T_UINT, offsetof(Scene, num_materials), READONLY, "Number of materials"},
+    {"animations", T_OBJECT_EX, offsetof(Scene, animations), READONLY, "List of animations in the scene (empty list if none)"},
+    {"num_animations", T_UINT, offsetof(Scene, num_animations), READONLY, "Number of animations"},
     {NULL} /* Sentinel */
 };
 
@@ -729,6 +955,236 @@ fail_mat_list:
 }
 
 
+// Process a single aiNodeAnim into a Python NodeAnim object.
+// Returns a NEW reference or NULL on error.
+static PyObject* process_node_anim(const struct aiNodeAnim *c_na) {
+    NodeAnim *py_na = (NodeAnim *)NodeAnimType.tp_alloc(&NodeAnimType, 0);
+    if (!py_na) return NULL;
+
+    py_na->node_name = PyUnicode_FromString(c_na->mNodeName.data);
+    if (!py_na->node_name) goto fail_node_anim;
+
+    py_na->num_position_keys = c_na->mNumPositionKeys;
+    py_na->num_rotation_keys = c_na->mNumRotationKeys;
+    py_na->num_scaling_keys = c_na->mNumScalingKeys;
+    py_na->pre_state = (unsigned int)c_na->mPreState;
+    py_na->post_state = (unsigned int)c_na->mPostState;
+
+    // --- Position Keys (time float64 + value float32 x3) ---
+    if (c_na->mNumPositionKeys > 0 && c_na->mPositionKeys) {
+        py_na->c_pos_times = (double*)malloc(c_na->mNumPositionKeys * sizeof(double));
+        py_na->c_pos_values = (float*)malloc(c_na->mNumPositionKeys * 3 * sizeof(float));
+        if (!py_na->c_pos_times || !py_na->c_pos_values) { PyErr_NoMemory(); goto fail_node_anim; }
+
+        for (unsigned int k = 0; k < c_na->mNumPositionKeys; ++k) {
+            py_na->c_pos_times[k] = c_na->mPositionKeys[k].mTime;
+            py_na->c_pos_values[k*3 + 0] = c_na->mPositionKeys[k].mValue.x;
+            py_na->c_pos_values[k*3 + 1] = c_na->mPositionKeys[k].mValue.y;
+            py_na->c_pos_values[k*3 + 2] = c_na->mPositionKeys[k].mValue.z;
+        }
+
+        py_na->position_key_times = create_memoryview(
+            py_na->c_pos_times,
+            (Py_ssize_t)c_na->mNumPositionKeys * sizeof(double), "d", sizeof(double));
+        if (!py_na->position_key_times) goto fail_node_anim;
+
+        py_na->position_key_values = create_memoryview(
+            py_na->c_pos_values,
+            (Py_ssize_t)c_na->mNumPositionKeys * 3 * sizeof(float), "f", sizeof(float));
+        if (!py_na->position_key_values) goto fail_node_anim;
+    } else {
+        Py_INCREF(Py_None); py_na->position_key_times = Py_None;
+        Py_INCREF(Py_None); py_na->position_key_values = Py_None;
+    }
+
+    // --- Rotation Keys (time float64 + quaternion float32 x4) ---
+    if (c_na->mNumRotationKeys > 0 && c_na->mRotationKeys) {
+        py_na->c_rot_times = (double*)malloc(c_na->mNumRotationKeys * sizeof(double));
+        py_na->c_rot_values = (float*)malloc(c_na->mNumRotationKeys * 4 * sizeof(float));
+        if (!py_na->c_rot_times || !py_na->c_rot_values) { PyErr_NoMemory(); goto fail_node_anim; }
+
+        for (unsigned int k = 0; k < c_na->mNumRotationKeys; ++k) {
+            py_na->c_rot_times[k] = c_na->mRotationKeys[k].mTime;
+            py_na->c_rot_values[k*4 + 0] = c_na->mRotationKeys[k].mValue.x;
+            py_na->c_rot_values[k*4 + 1] = c_na->mRotationKeys[k].mValue.y;
+            py_na->c_rot_values[k*4 + 2] = c_na->mRotationKeys[k].mValue.z;
+            py_na->c_rot_values[k*4 + 3] = c_na->mRotationKeys[k].mValue.w;
+        }
+
+        py_na->rotation_key_times = create_memoryview(
+            py_na->c_rot_times,
+            (Py_ssize_t)c_na->mNumRotationKeys * sizeof(double), "d", sizeof(double));
+        if (!py_na->rotation_key_times) goto fail_node_anim;
+
+        py_na->rotation_key_values = create_memoryview(
+            py_na->c_rot_values,
+            (Py_ssize_t)c_na->mNumRotationKeys * 4 * sizeof(float), "f", sizeof(float));
+        if (!py_na->rotation_key_values) goto fail_node_anim;
+    } else {
+        Py_INCREF(Py_None); py_na->rotation_key_times = Py_None;
+        Py_INCREF(Py_None); py_na->rotation_key_values = Py_None;
+    }
+
+    // --- Scaling Keys (time float64 + value float32 x3) ---
+    if (c_na->mNumScalingKeys > 0 && c_na->mScalingKeys) {
+        py_na->c_scale_times = (double*)malloc(c_na->mNumScalingKeys * sizeof(double));
+        py_na->c_scale_values = (float*)malloc(c_na->mNumScalingKeys * 3 * sizeof(float));
+        if (!py_na->c_scale_times || !py_na->c_scale_values) { PyErr_NoMemory(); goto fail_node_anim; }
+
+        for (unsigned int k = 0; k < c_na->mNumScalingKeys; ++k) {
+            py_na->c_scale_times[k] = c_na->mScalingKeys[k].mTime;
+            py_na->c_scale_values[k*3 + 0] = c_na->mScalingKeys[k].mValue.x;
+            py_na->c_scale_values[k*3 + 1] = c_na->mScalingKeys[k].mValue.y;
+            py_na->c_scale_values[k*3 + 2] = c_na->mScalingKeys[k].mValue.z;
+        }
+
+        py_na->scaling_key_times = create_memoryview(
+            py_na->c_scale_times,
+            (Py_ssize_t)c_na->mNumScalingKeys * sizeof(double), "d", sizeof(double));
+        if (!py_na->scaling_key_times) goto fail_node_anim;
+
+        py_na->scaling_key_values = create_memoryview(
+            py_na->c_scale_values,
+            (Py_ssize_t)c_na->mNumScalingKeys * 3 * sizeof(float), "f", sizeof(float));
+        if (!py_na->scaling_key_values) goto fail_node_anim;
+    } else {
+        Py_INCREF(Py_None); py_na->scaling_key_times = Py_None;
+        Py_INCREF(Py_None); py_na->scaling_key_values = Py_None;
+    }
+
+    return (PyObject*)py_na; // Success
+
+fail_node_anim:
+    Py_DECREF(py_na); // NodeAnim_dealloc frees members and C arrays
+    return NULL;
+}
+
+// Process animations from aiScene into a Python list of Animation objects.
+// Returns a new reference to the list, or NULL on error.
+static PyObject* process_animations(const struct aiScene *c_scene) {
+    PyObject *py_anim_list = PyList_New(c_scene->mNumAnimations);
+    if (!py_anim_list) return NULL;
+
+    for (unsigned int i = 0; i < c_scene->mNumAnimations; ++i) {
+        const struct aiAnimation *c_anim = c_scene->mAnimations[i];
+        Animation *py_anim = (Animation *)AnimationType.tp_alloc(&AnimationType, 0);
+        if (!py_anim) goto fail_anim_list;
+
+        py_anim->name = PyUnicode_FromString(c_anim->mName.data);
+        if (!py_anim->name) { Py_DECREF(py_anim); goto fail_anim_list; }
+
+        py_anim->duration = c_anim->mDuration;
+        py_anim->ticks_per_second = c_anim->mTicksPerSecond;
+        py_anim->num_channels = c_anim->mNumChannels;
+
+        py_anim->channels = PyList_New(c_anim->mNumChannels);
+        if (!py_anim->channels) { Py_DECREF(py_anim); goto fail_anim_list; }
+
+        for (unsigned int c = 0; c < c_anim->mNumChannels; ++c) {
+            PyObject *py_channel = process_node_anim(c_anim->mChannels[c]);
+            if (!py_channel) { Py_DECREF(py_anim); goto fail_anim_list; }
+
+            if (PyList_SetItem(py_anim->channels, c, py_channel) < 0) {
+                Py_DECREF(py_channel);
+                Py_DECREF(py_anim);
+                goto fail_anim_list;
+            }
+        }
+
+        if (PyList_SetItem(py_anim_list, i, (PyObject*)py_anim) < 0) {
+            Py_DECREF(py_anim);
+            goto fail_anim_list;
+        }
+    }
+
+    return py_anim_list; // Success
+
+fail_anim_list:
+    Py_DECREF(py_anim_list);
+    return NULL;
+}
+
+
+// Process bones from aiMesh into a Python list of Bone objects.
+// Returns a new reference to the list, or NULL on error.
+static PyObject* process_bones(const struct aiMesh *c_mesh) {
+    PyObject *py_bones_list = PyList_New(c_mesh->mNumBones);
+    if (!py_bones_list) return NULL;
+
+    for (unsigned int i = 0; i < c_mesh->mNumBones; ++i) {
+        const struct aiBone *c_bone = c_mesh->mBones[i];
+        Bone *py_bone = (Bone *)BoneType.tp_alloc(&BoneType, 0);
+        if (!py_bone) goto fail_bone_list;
+
+        // --- Name & Offset Matrix ---
+        py_bone->name = PyUnicode_FromString(c_bone->mName.data);
+        if (!py_bone->name) { Py_DECREF(py_bone); goto fail_bone_list; }
+
+        py_bone->offset_matrix = tuple_from_matrix4x4(&c_bone->mOffsetMatrix);
+        if (!py_bone->offset_matrix) { Py_DECREF(py_bone); goto fail_bone_list; }
+
+        // --- Vertex Weights (parallel arrays: vertex ids + strengths) ---
+        py_bone->num_weights = c_bone->mNumWeights;
+
+        if (c_bone->mNumWeights > 0 && c_bone->mWeights) {
+            py_bone->c_weight_ids = (unsigned int*)malloc(c_bone->mNumWeights * sizeof(unsigned int));
+            py_bone->c_weights = (float*)malloc(c_bone->mNumWeights * sizeof(float));
+            if (!py_bone->c_weight_ids || !py_bone->c_weights) {
+                PyErr_NoMemory();
+                Py_DECREF(py_bone);
+                goto fail_bone_list;
+            }
+
+            for (unsigned int w = 0; w < c_bone->mNumWeights; ++w) {
+                py_bone->c_weight_ids[w] = c_bone->mWeights[w].mVertexId;
+                py_bone->c_weights[w] = (float)c_bone->mWeights[w].mWeight;
+            }
+
+            py_bone->weight_vertex_ids = create_memoryview(
+                py_bone->c_weight_ids,
+                (Py_ssize_t)c_bone->mNumWeights * sizeof(unsigned int), "I", sizeof(unsigned int));
+            if (!py_bone->weight_vertex_ids) { Py_DECREF(py_bone); goto fail_bone_list; }
+
+            py_bone->weights = create_memoryview(
+                py_bone->c_weights,
+                (Py_ssize_t)c_bone->mNumWeights * sizeof(float), "f", sizeof(float));
+            if (!py_bone->weights) { Py_DECREF(py_bone); goto fail_bone_list; }
+        } else {
+            Py_INCREF(Py_None); py_bone->weight_vertex_ids = Py_None;
+            Py_INCREF(Py_None); py_bone->weights = Py_None;
+        }
+
+        // --- Armature / Node names (only populated with Process_PopulateArmatureData) ---
+        if (c_bone->mArmature) {
+            py_bone->armature_name = PyUnicode_FromString(c_bone->mArmature->mName.data);
+        } else {
+            Py_INCREF(Py_None);
+            py_bone->armature_name = Py_None;
+        }
+        if (!py_bone->armature_name) { Py_DECREF(py_bone); goto fail_bone_list; }
+
+        if (c_bone->mNode) {
+            py_bone->node_name = PyUnicode_FromString(c_bone->mNode->mName.data);
+        } else {
+            Py_INCREF(Py_None);
+            py_bone->node_name = Py_None;
+        }
+        if (!py_bone->node_name) { Py_DECREF(py_bone); goto fail_bone_list; }
+
+        if (PyList_SetItem(py_bones_list, i, (PyObject*)py_bone) < 0) {
+            Py_DECREF(py_bone);
+            goto fail_bone_list;
+        }
+    }
+
+    return py_bones_list; // Success
+
+fail_bone_list:
+    Py_DECREF(py_bones_list);
+    return NULL;
+}
+
+
 // Process meshes from aiScene into a Python list of Mesh objects.
 // Returns a new reference to the list, or NULL on error.
 static PyObject* process_meshes(const struct aiScene *c_scene) {
@@ -917,6 +1373,12 @@ static PyObject* process_meshes(const struct aiScene *c_scene) {
         }
 
 
+        // --- Bones ---
+        py_mesh->num_bones = c_mesh->mNumBones;
+        py_mesh->bones = process_bones(c_mesh);
+        if (!py_mesh->bones) { Py_DECREF(py_mesh); goto fail_mesh_list; }
+
+
         // --- Add Mesh to List ---
         // PyList_SetItem steals the reference, no DECREF needed on success
         if (PyList_SetItem(py_meshes_list, i, (PyObject*)py_mesh) < 0) {
@@ -1058,6 +1520,7 @@ static PyObject* py_import_file(PyObject *self, PyObject *args) {
 
     py_scene->num_meshes = c_scene->mNumMeshes;
     py_scene->num_materials = c_scene->mNumMaterials;
+    py_scene->num_animations = c_scene->mNumAnimations;
 
     // Process Meshes
     py_scene->meshes = process_meshes(c_scene);
@@ -1069,6 +1532,12 @@ static PyObject* py_import_file(PyObject *self, PyObject *args) {
     py_scene->materials = process_materials(c_scene);
     if (!py_scene->materials) {
         goto fail; // Error occurred during material processing
+    }
+
+    // Process Animations
+    py_scene->animations = process_animations(c_scene);
+    if (!py_scene->animations) {
+        goto fail; // Error occurred during animation processing
     }
 
     // **** Process Node Hierarchy ****
@@ -1128,6 +1597,9 @@ PyMODINIT_FUNC PyInit_assimp_py(void) {
     if (PyType_Ready(&MeshType) < 0) return NULL;
     if (PyType_Ready(&SceneType) < 0) return NULL;
     if (PyType_Ready(&NodeType) < 0) return NULL;
+    if (PyType_Ready(&BoneType) < 0) return NULL;
+    if (PyType_Ready(&AnimationType) < 0) return NULL;
+    if (PyType_Ready(&NodeAnimType) < 0) return NULL;
 
     // Create Module
     module = PyModule_Create(&assimp_py_module);
@@ -1161,7 +1633,40 @@ PyMODINIT_FUNC PyInit_assimp_py(void) {
         Py_DECREF(&NodeType);
         Py_DECREF(module);
         return NULL;
-    }    
+    }
+
+    Py_INCREF(&BoneType);
+    if (PyModule_AddObject(module, "Bone", (PyObject *)&BoneType) < 0) {
+        Py_DECREF(&MeshType);
+        Py_DECREF(&SceneType);
+        Py_DECREF(&NodeType);
+        Py_DECREF(&BoneType);
+        Py_DECREF(module);
+        return NULL;
+    }
+
+    Py_INCREF(&AnimationType);
+    if (PyModule_AddObject(module, "Animation", (PyObject *)&AnimationType) < 0) {
+        Py_DECREF(&MeshType);
+        Py_DECREF(&SceneType);
+        Py_DECREF(&NodeType);
+        Py_DECREF(&BoneType);
+        Py_DECREF(&AnimationType);
+        Py_DECREF(module);
+        return NULL;
+    }
+
+    Py_INCREF(&NodeAnimType);
+    if (PyModule_AddObject(module, "NodeAnim", (PyObject *)&NodeAnimType) < 0) {
+        Py_DECREF(&MeshType);
+        Py_DECREF(&SceneType);
+        Py_DECREF(&NodeType);
+        Py_DECREF(&BoneType);
+        Py_DECREF(&AnimationType);
+        Py_DECREF(&NodeAnimType);
+        Py_DECREF(module);
+        return NULL;
+    }
 
     // Add Constants (Post-processing flags) - Abbreviated list for example
     int error = 0;
@@ -1192,6 +1697,12 @@ PyMODINIT_FUNC PyInit_assimp_py(void) {
     error |= add_int_constant(module, "Process_SplitByBoneCount", aiProcess_SplitByBoneCount);
     error |= add_int_constant(module, "Process_Debone", aiProcess_Debone);
     error |= add_int_constant(module, "Process_GlobalScale", aiProcess_GlobalScale);
+    error |= add_int_constant(module, "Process_PopulateArmatureData", aiProcess_PopulateArmatureData);
+    // Add Animation Behaviour constants
+    error |= add_int_constant(module, "AnimBehaviour_DEFAULT", aiAnimBehaviour_DEFAULT);
+    error |= add_int_constant(module, "AnimBehaviour_CONSTANT", aiAnimBehaviour_CONSTANT);
+    error |= add_int_constant(module, "AnimBehaviour_LINEAR", aiAnimBehaviour_LINEAR);
+    error |= add_int_constant(module, "AnimBehaviour_REPEAT", aiAnimBehaviour_REPEAT);
     // Add Texture Type constants
     error |= add_int_constant(module, "TextureType_NONE", aiTextureType_NONE);
     error |= add_int_constant(module, "TextureType_DIFFUSE", aiTextureType_DIFFUSE);

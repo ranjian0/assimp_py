@@ -108,6 +108,50 @@ def traverse(root, indent=0):
 print("Traversing nodes ...")
 traverse(root)
 ```
+# Skeletal Animation
+
+Bones are exposed per mesh; animations are exposed on the scene. Bone weights
+and animation keys are parallel read-only memoryviews (`weights`/`weight_vertex_ids`,
+`*_key_times` as float64 + `*_key_values` as float32), numpy-friendly via
+`np.frombuffer(...)`.
+
+```python
+import assimp_py
+import numpy as np
+
+scene = assimp_py.import_file(
+    "model.glb",
+    assimp_py.Process_Triangulate | assimp_py.Process_LimitBoneWeights,
+)
+
+# -- per mesh bones
+for mesh in scene.meshes:
+    for bone in mesh.bones:
+        # 4x4 tuple-of-tuples transforming mesh space -> bone space (bind pose)
+        bone.offset_matrix
+
+        ids = np.frombuffer(bone.weight_vertex_ids, dtype=np.uint32)
+        weights = np.frombuffer(bone.weights, dtype=np.float32)
+
+        # match the bone to its joint node in scene.root_node by name;
+        # or pass Process_PopulateArmatureData to get bone.node_name /
+        # bone.armature_name resolved for you
+
+# -- animations
+for anim in scene.animations:
+    duration_seconds = anim.duration / (anim.ticks_per_second or anim.duration)
+
+    for channel in anim.channels:
+        times = np.frombuffer(channel.rotation_key_times, dtype=np.float64)
+        quats = np.frombuffer(channel.rotation_key_values, dtype=np.float32).reshape(-1, 4)
+
+        # channel.pre_state / channel.post_state describe the behaviour
+        # outside the key range (AnimBehaviour_DEFAULT/CONSTANT/LINEAR/REPEAT)
+```
+
+> `ticks_per_second` is `0.0` when the file does not specify it — treat the
+> duration as seconds in that case.
+
 # Supported Mesh Formats
 
 > AMF 3DS AC ASE ASSBIN B3D BVH COLLADA DXF CSM HMP IRRMESH IRR LWO LWS M3D MD2 MD3 MD5 MDC MDL NFF NDO OFF OGRE OPENGEX PLY MS3D COB BLEND IFC XGL FBX Q3D Q3BSP RAW SIB SMD STL TERRAGEN 3D X X3D GLTF 3MF MMD OBJ
