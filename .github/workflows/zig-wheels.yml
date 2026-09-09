@@ -39,7 +39,7 @@ jobs:
           python-version: '3.13'
 
       - name: Install build tooling
-        run: pip install ziglang==${ZIG_VERSION} wheel auditwheel
+        run: pip install ziglang==${ZIG_VERSION} wheel auditwheel "cmake>=4.0"
 
       # binfmt handlers for the emulated auditwheel/pytest container step
       # (compilation itself never runs under emulation)
