@@ -45,21 +45,8 @@ jobs:
       # (compilation itself never runs under emulation)
       - uses: docker/setup-qemu-action@v4
 
-      - name: Restore zig cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/zig
-          key: zig-${{ matrix.arch }}-${{ matrix.libc }}-${{ env.ZIG_VERSION }}-assimp6.0.5-unity
-          restore-keys: |
-            zig-${{ matrix.arch }}-${{ matrix.libc }}-${{ env.ZIG_VERSION }}-
-
       - name: Build + test wheels
         run: python scripts/build_wheels.py --arch ${{ matrix.arch }} --libc ${{ matrix.libc }} --repo . --out wheelhouse
-
-      - name: Measure zig cache size
-        run: |
-          echo "## zig cache: ${{ matrix.arch }} ${{ matrix.libc }}" >> $GITHUB_STEP_SUMMARY
-          echo '`'$(du -sh ~/.cache/zig | cut -f1)'`' >> $GITHUB_STEP_SUMMARY
 
       - uses: actions/upload-artifact@v7
         with:
