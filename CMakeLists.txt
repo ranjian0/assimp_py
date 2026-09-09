@@ -27,12 +27,6 @@ endif()
 # build for universal2
 set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64")
 
-# use ccache to speed up builds if it is available
-find_program(CCACHE_FOUND ccache)
-if(CCACHE_FOUND)
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
-endif(CCACHE_FOUND)
-
 # needed for python lib
 if(CMAKE_COMPILER_IS_GNUCC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -funsigned-char")

@@ -38,7 +38,10 @@ class CMakeBuild(build_ext):
 
         # these dirs will be created in build_py, so if you don't have
         # any python sources to bundle, the dirs will be missing
-        build_temp = pathlib.Path(self.build_temp)
+        # NOTE: deliberately python-version-independent - cibuildwheel builds
+        # each python in sequence and make skips the ~500 unchanged assimp
+        # objects on the 2nd/3rd builds instead of recompiling them
+        build_temp = pathlib.Path('build') / 'cmake'
         build_temp.mkdir(parents=True, exist_ok=True)
 
         extdir = pathlib.Path(self.get_ext_fullpath(ext.name))
