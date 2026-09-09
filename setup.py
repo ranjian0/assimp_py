@@ -38,10 +38,7 @@ class CMakeBuild(build_ext):
 
         # these dirs will be created in build_py, so if you don't have
         # any python sources to bundle, the dirs will be missing
-        # NOTE: deliberately python-version-independent - cibuildwheel builds
-        # each python in sequence and make skips the ~500 unchanged assimp
-        # objects on the 2nd/3rd builds instead of recompiling them
-        build_temp = pathlib.Path('build') / 'cmake'
+        build_temp = pathlib.Path(self.build_temp)
         build_temp.mkdir(parents=True, exist_ok=True)
 
         extdir = pathlib.Path(self.get_ext_fullpath(ext.name))
@@ -54,12 +51,6 @@ class CMakeBuild(build_ext):
 
             # Tells cmake which python version to use for this build
             '-DREQUESTED_PYTHON_VERSION=' + PYTHON_VERSION,
-
-            # pin the interpreter for FindPython: the shared cmake build dir
-            # caches the previous python build's detection, and cibuildwheel
-            # removes that build env between builds - without the pin cmake
-            # re-searches and can find the container's ancient system python
-            '-DPython_EXECUTABLE=' + sys.executable,
 
             # This is the only reliable way I could find to get extension name on all platforms
             # Used within CMakeLists.txt
