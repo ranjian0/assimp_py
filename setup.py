@@ -55,6 +55,12 @@ class CMakeBuild(build_ext):
             # Tells cmake which python version to use for this build
             '-DREQUESTED_PYTHON_VERSION=' + PYTHON_VERSION,
 
+            # pin the interpreter for FindPython: the shared cmake build dir
+            # caches the previous python build's detection, and cibuildwheel
+            # removes that build env between builds - without the pin cmake
+            # re-searches and can find the container's ancient system python
+            '-DPython_EXECUTABLE=' + sys.executable,
+
             # This is the only reliable way I could find to get extension name on all platforms
             # Used within CMakeLists.txt
             '-DEXTENSION_NAME='+ str(extdir.name),
