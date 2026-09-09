@@ -225,7 +225,7 @@ jobs:
           # the extension + stubs ship in every wheel
           for w in dist/*.whl; do
             python -m zipfile -l "$w" | grep -q "assimp_py.pyi" || { echo "wheel $w missing stub"; exit 1; }
-            python -m zipfile -l "$w" | grep -Eq "assimp_py\.(cpython-[^\"]+\.(so|pyd))" || { echo "wheel $w missing extension"; exit 1; }
+            python -m zipfile -l "$w" | grep -Eq "assimp_py\.[^/ ]+\.(so|pyd)" || { echo "wheel $w missing extension"; exit 1; }
           done
 
           twine check dist/*
