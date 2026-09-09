@@ -11,7 +11,7 @@ on:
         options:
           - production
           - test
-      
+
   release:
     types: [published]
 
@@ -26,15 +26,16 @@ env:
   # Best effort: if no package manager has ccache, build uncached.
   CIBW_BEFORE_ALL_LINUX: >-
     command -v ccache >/dev/null 2>&1 || { (yum install -y epel-release && yum install -y ccache) || dnf install -y ccache || apk add --no-cache ccache || (apt-get update && apt-get install -y ccache) || echo "ccache unavailable, building without cache"; }
-  CIBW_ENVIRONMENT_LINUX: >
+  CIBW_ENVIRONMENT_LINUX: >-
     CCACHE_DIR=/tmp/ccache
-    CCACHE_MAXSIZE=1G
+    CCACHE_MAXSIZE=750M
 
 jobs:
   build_wheels_windows:
     name: Build wheels on Windows (${{ matrix.arch }})
     runs-on: windows-latest
     strategy:
+      fail-fast: false
       matrix:
         arch: [AMD64, ARM64]
     env:
@@ -62,11 +63,7 @@ jobs:
 
   build_wheels_mac:
     name: Build wheels on MacOS (universal2)
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [macos-latest]  # macos-latest (ARM64), macos-12 (Intel)
-        
+    runs-on: macos-latest
     env:
       CIBW_ARCHS: universal2
 
@@ -87,34 +84,25 @@ jobs:
         with:
           name: artifact-mac-universal2
           path: ./wheelhouse/*.whl
-          
+
   build_wheels_manylinux:
-    name: Build wheels on ${{ matrix.distro }} for ${{ matrix.arch }}
-    # aarch64 containers run natively on the free arm64 runners (much faster
-    # than qemu emulation); every other foreign arch goes through qemu
+    name: Build wheels on manylinux2014 for ${{ matrix.arch }}
+    # aarch64 containers run natively on the free arm64 runners
     runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     strategy:
+      fail-fast: false
       matrix:
-        distro: [manylinux2014, manylinux_2_28]
-        arch: [x86_64, aarch64, s390x, ppc64le]
-        include:
-          - distro: manylinux2014
-            arch: i686
-        
+        arch: [x86_64, aarch64]
     env:
-      CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.distro }}
-      CIBW_MANYLINUX_I686_IMAGE: ${{ matrix.distro }}
-      CIBW_MANYLINUX_AARCH64_IMAGE: ${{ matrix.distro }}
-      CIBW_MANYLINUX_S390X_IMAGE: ${{ matrix.distro }}
-      CIBW_MANYLINUX_PPC64LE_IMAGE: ${{ matrix.distro }}
-      CIBW_ARCHS: ${{matrix.arch}}
+      # cibuildwheel defaults to the manylinux_2_28 image; we build against
+      # manylinux2014 (glibc 2.17) for maximum compatibility - our symbol
+      # usage stays within 2.17, so these wheels install everywhere newer too
+      CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
+      CIBW_MANYLINUX_AARCH64_IMAGE: manylinux2014
+      CIBW_ARCHS: ${{ matrix.arch }}
 
     steps:
       - uses: actions/checkout@v7
-      - name: Set up QEMU
-        if: ${{ matrix.arch != 'x86_64' && matrix.arch != 'i686' && matrix.arch != 'aarch64' }}
-        uses: docker/setup-qemu-action@v4
-
       - uses: actions/setup-python@v7
         name: Set up Python
         with:
@@ -128,32 +116,22 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: artifact-${{ matrix.distro }}-${{matrix.arch}}
+          name: artifact-manylinux-${{ matrix.arch }}
           path: ./wheelhouse/*.whl
-        
+
   build_wheels_musllinux:
     name: Build wheels on musllinux_1_2 for ${{ matrix.arch }}
+    # aarch64 containers run natively on the free arm64 runners
     runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     strategy:
+      fail-fast: false
       matrix:
-        arch: [x86_64, i686, aarch64, s390x, ppc64le, armv7l]
-        
+        arch: [x86_64, aarch64]
     env:
-      CIBW_MUSLLINUX_X86_64_IMAGE: musllinux_1_2
-      CIBW_MUSLLINUX_I686_IMAGE: musllinux_1_2
-      CIBW_MUSLLINUX_AARCH64_IMAGE: musllinux_1_2
-      CIBW_MUSLLINUX_S390X_IMAGE: musllinux_1_2
-      CIBW_MUSLLINUX_PPC64LE_IMAGE: musllinux_1_2
-      CIBW_MUSLLINUX_ARMV7L_IMAGE: musllinux_1_2
-      CIBW_BUILD: cp312-musllinux* cp313-musllinux* cp314-musllinux*
-      CIBW_ARCHS: ${{matrix.arch}}
+      CIBW_ARCHS: ${{ matrix.arch }}
 
     steps:
       - uses: actions/checkout@v7
-      - name: Set up QEMU
-        if: ${{ matrix.arch != 'x86_64' && matrix.arch != 'i686' && matrix.arch != 'aarch64' }}
-        uses: docker/setup-qemu-action@v4
-
       - uses: actions/setup-python@v7
         name: Set up Python
         with:
@@ -167,7 +145,7 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: artifact-musllinux-${{matrix.arch}}
+          name: artifact-musllinux-${{ matrix.arch }}
           path: ./wheelhouse/*.whl
 
   build_sdist:
@@ -180,6 +158,16 @@ jobs:
         with:
           python-version: '3.14'
 
+      - name: Check release tag matches package version
+        if: github.event_name == 'release'
+        run: |
+          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "tag $TAG does not match pyproject version $VERSION" >&2
+            exit 1
+          fi
+
       - name: Install build
         run: pip install build
 
@@ -191,10 +179,75 @@ jobs:
           name: artifact-source
           path: dist/*.tar.gz
 
-  upload_pypi:
+  inspect:
+    name: Inspect distribution
     needs: [build_wheels_windows, build_wheels_mac, build_wheels_manylinux, build_wheels_musllinux, build_sdist]
     runs-on: ubuntu-latest
-    
+
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: artifact-*
+          merge-multiple: true
+          path: dist
+
+      - name: Verify artifacts
+        run: |
+          pip install twine
+          set -e
+
+          wheels=$(ls dist/*.whl | wc -l)
+          sdists=$(ls dist/*.tar.gz | wc -l)
+          echo "wheels: $wheels (expected 21), sdists: $sdists (expected 1)"
+          test "$wheels" -eq 21
+          test "$sdists" -eq 1
+
+          # one lane per platform
+          for pattern in manylinux2014_x86_64 manylinux2014_aarch64 \
+                         musllinux_1_2_x86_64 musllinux_1_2_aarch64 \
+                         win_amd64 win_arm64 macosx; do
+            n=$(ls dist/ | grep -c "$pattern" || true)
+            test "$n" -eq 3 || { echo "expected 3 wheels matching $pattern, got $n"; exit 1; }
+          done
+
+          # sdist must be buildable from source: critical files present
+          sdist=$(ls dist/*.tar.gz)
+          for f in CMakeLists.txt src/assimp_py.c pyproject.toml setup.py \
+                   LICENSE licenses/assimp-LICENSE; do
+            tar -tzf "$sdist" | grep -q "assimp_py-.*/$f\$" || { echo "sdist missing $f"; exit 1; }
+          done
+
+          # wheels must not leak C sources; check every wheel
+          for w in dist/*.whl; do
+            if python -m zipfile -l "$w" | grep -E "\.c$"; then
+              echo "wheel $w contains C sources"; exit 1
+            fi
+          done
+
+          # the extension + stubs ship in every wheel
+          for w in dist/*.whl; do
+            python -m zipfile -l "$w" | grep -q "assimp_py.pyi" || { echo "wheel $w missing stub"; exit 1; }
+            python -m zipfile -l "$w" | grep -Eq "assimp_py\.(cpython-[^\"]+\.(so|pyd))" || { echo "wheel $w missing extension"; exit 1; }
+          done
+
+          twine check dist/*
+
+      - name: Summary
+        run: |
+          {
+            echo "## Distribution"
+            echo
+            echo "| file | size |"
+            echo "|---|---|"
+            for f in dist/*; do
+              echo "| $(basename "$f") | $(du -h "$f" | cut -f1) |"
+            done
+          } >> $GITHUB_STEP_SUMMARY
+
+  upload_pypi:
+    needs: [build_wheels_windows, build_wheels_mac, build_wheels_manylinux, build_wheels_musllinux, build_sdist, inspect]
+    runs-on: ubuntu-latest
+
     steps:
       - uses: actions/download-artifact@v8
         with:
