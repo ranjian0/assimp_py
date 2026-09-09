@@ -53,6 +53,18 @@ jobs:
           restore-keys: |
             zig-${{ matrix.arch }}-${{ matrix.libc }}-${{ env.ZIG_VERSION }}-
 
+      # The cmake build dir makes warm runs incremental: make skips
+      # up-to-date objects entirely instead of paying zig's per-TU process
+      # startup on cache hits. Runner workspace paths are stable, and make
+      # recompiles anything whose sources were re-checked-out newer.
+      - name: Restore build tree
+        uses: actions/cache@v4
+        with:
+          path: wheelhouse/.work-*
+          key: zigtrees-${{ matrix.arch }}-${{ matrix.libc }}-${{ github.run_id }}
+          restore-keys: |
+            zigtrees-${{ matrix.arch }}-${{ matrix.libc }}-
+
       - name: Build + test wheels
         run: python scripts/build_wheels.py --arch ${{ matrix.arch }} --libc ${{ matrix.libc }} --repo . --out wheelhouse
 
