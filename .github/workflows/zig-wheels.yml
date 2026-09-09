@@ -49,25 +49,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/zig
-          key: zig-${{ matrix.arch }}-${{ matrix.libc }}-${{ env.ZIG_VERSION }}-assimp6.0.5
+          key: zig-${{ matrix.arch }}-${{ matrix.libc }}-${{ env.ZIG_VERSION }}-assimp6.0.5-unity
           restore-keys: |
             zig-${{ matrix.arch }}-${{ matrix.libc }}-${{ env.ZIG_VERSION }}-
-
-      # Incremental build trees: keyed by source hash. make's timestamp
-      # reasoning does not survive CI (checkout rewrites source mtimes), so
-      # restored objects are touched to be newer; any source change misses
-      # this cache entirely and rebuilds (zig's content cache still catches
-      # unchanged TUs there).
-      - name: Restore build tree
-        id: trees
-        uses: actions/cache@v4
-        with:
-          path: wheelhouse/.work-*
-          key: zigtrees-${{ matrix.arch }}-${{ matrix.libc }}-${{ hashFiles('CMakeLists.txt', 'src/**', 'scripts/build_wheels.py') }}
-
-      - name: Mark restored objects up to date
-        if: steps.trees.outputs.cache-hit == 'true'
-        run: find wheelhouse/.work-*/build -name '*.o' -exec touch {} + 2>/dev/null || true
 
       - name: Build + test wheels
         run: python scripts/build_wheels.py --arch ${{ matrix.arch }} --libc ${{ matrix.libc }} --repo . --out wheelhouse

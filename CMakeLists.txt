@@ -82,6 +82,12 @@ set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF)
 
 FetchContent_MakeAvailable(assimp)
 
+# Batch assimp's ~460 translation units into a handful of unity files:
+# with a cross (zig) toolchain the per-TU compiler process startup
+# dominates wall time; unity batches cut it ~20x. Also benefits ccache.
+set_property(DIRECTORY ${assimp_SOURCE_DIR} PROPERTY UNITY_BUILD ON)
+set_property(DIRECTORY ${assimp_SOURCE_DIR} PROPERTY UNITY_BUILD_BATCH_SIZE 32)
+
 # build for universal2
 set_property(DIRECTORY ${assimp_SOURCE_DIR} PROPERTY CMAKE_OSX_ARCHITECTURES "x86_64;arm64")
 
