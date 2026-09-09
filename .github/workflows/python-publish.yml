@@ -22,9 +22,10 @@ env:
   CIBW_TEST_REQUIRES: pytest
   CIBW_TEST_COMMAND: pytest {project}/tests
   # assimp is python-version-independent, so ccache makes the 2nd/3rd wheel
-  # builds in each job nearly free (our CMakeLists enables ccache when found)
+  # builds in each job nearly free (our CMakeLists enables ccache when found).
+  # Best effort: if no package manager has ccache, build uncached.
   CIBW_BEFORE_ALL_LINUX: >-
-    command -v ccache >/dev/null 2>&1 || { (yum install -y epel-release && yum install -y ccache) || dnf install -y ccache || apk add --no-cache ccache || (apt-get update && apt-get install -y ccache); }
+    command -v ccache >/dev/null 2>&1 || { (yum install -y epel-release && yum install -y ccache) || dnf install -y ccache || apk add --no-cache ccache || (apt-get update && apt-get install -y ccache) || echo "ccache unavailable, building without cache"; }
   CIBW_ENVIRONMENT_LINUX: >
     CCACHE_DIR=/tmp/ccache
     CCACHE_MAXSIZE=1G
