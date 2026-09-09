@@ -2,25 +2,28 @@ cmake_minimum_required(VERSION 4.0)
 
 project(assimp_py)
 set(CMAKE_C_STANDARD 99)
-if(UNIX AND NOT APPLE)
-    # https://pybind11.readthedocs.io/en/stable/compiling.html#findpython-mode
-    # XXX Gotcha for building manylinux wheels.
-    find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
-    # Uncomment for local builds 😩
-    # find_package(Python REQUIRED COMPONENTS Interpreter Development)
-else()
-    if(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
-        # Cross-compiled with -A ARM64 (cibuildwheel win_arm64 builds on amd64
-        # runners): FindPython rejects the x64 host interpreter for the ARM64
-        # target and no ARM64 python exists on the host. setup.py passes the
-        # arch-independent include dir via -DPython_INCLUDE_DIRS instead
-        # (the extension never links the python library on Windows).
-        if(NOT Python_INCLUDE_DIRS)
-            message(FATAL_ERROR "Python_INCLUDE_DIRS must be set for ARM64 cross builds")
-        endif()
+if(NOT DEFINED ASSIMP_PY_TARGETS)
+    # setup.py path (native builds): discover python normally
+    if(UNIX AND NOT APPLE)
+        # https://pybind11.readthedocs.io/en/stable/compiling.html#findpython-mode
+        # XXX Gotcha for building manylinux wheels.
+        find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
+        # Uncomment for local builds 😩
+        # find_package(Python REQUIRED COMPONENTS Interpreter Development)
     else()
-        # XXX Gotcha for building multiple python versions on windows.
-        find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development)
+        if(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
+            # Cross-compiled with -A ARM64 (cibuildwheel win_arm64 builds on amd64
+            # runners): FindPython rejects the x64 host interpreter for the ARM64
+            # target and no ARM64 python exists on the host. setup.py passes the
+            # arch-independent include dir via -DPython_INCLUDE_DIRS instead
+            # (the extension never links the python library on Windows).
+            if(NOT Python_INCLUDE_DIRS)
+                message(FATAL_ERROR "Python_INCLUDE_DIRS must be set for ARM64 cross builds")
+            endif()
+        else()
+            # XXX Gotcha for building multiple python versions on windows.
+            find_package(Python ${REQUESTED_PYTHON_VERSION} EXACT REQUIRED COMPONENTS Interpreter Development)
+        endif()
     endif()
 endif()
 
@@ -79,31 +82,64 @@ set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF)
 
 FetchContent_MakeAvailable(assimp)
 
+# Batch assimp's ~460 translation units into a handful of unity files:
+# with a cross (zig) toolchain the per-TU compiler process startup
+# dominates wall time; unity batches cut it ~20x. Also benefits ccache.
+set_property(DIRECTORY ${assimp_SOURCE_DIR} PROPERTY UNITY_BUILD ON)
+set_property(DIRECTORY ${assimp_SOURCE_DIR} PROPERTY UNITY_BUILD_BATCH_SIZE 32)
+
 # build for universal2
 set_property(DIRECTORY ${assimp_SOURCE_DIR} PROPERTY CMAKE_OSX_ARCHITECTURES "x86_64;arm64")
 
 # -- build the python extension
-include_directories(${assimp_SOURCE_DIR}/include ${assimp_BINARY_DIR}/include ${Python_INCLUDE_DIRS})
-link_directories(${Python_LIBRARY_DIRS})
-add_library(assimp_py SHARED src/assimp_py.c)
+if(DEFINED ASSIMP_PY_TARGETS)
+    # Direct multi-python mode (cross-compiled wheel builds): a single shared
+    # assimp build, one extension target per python version.
+    # ASSIMP_PY_TARGETS entries have the form "<output-name>=<python-include-dir>"
+    set(_idx 0)
+    foreach(_entry IN LISTS ASSIMP_PY_TARGETS)
+        string(REPLACE "=" ";" _kv "${_entry}")
+        list(GET _kv 0 _name)
+        list(GET _kv 1 _py_include)
+        math(EXPR _idx "${_idx} + 1")
+        add_library(assimp_py_ext_${_idx} SHARED src/assimp_py.c)
+        target_include_directories(assimp_py_ext_${_idx} PRIVATE
+            ${assimp_SOURCE_DIR}/include ${assimp_BINARY_DIR}/include ${_py_include})
+        if(UNIX AND NOT APPLE)
+            # no z/rt here: assimp's bundled zlib is compiled into the static
+            # archive and glibc >= 2.17 has clock_gettime in libc
+            target_link_libraries(assimp_py_ext_${_idx} assimp)
+        elseif(APPLE)
+            target_link_libraries(assimp_py_ext_${_idx} assimp "-undefined dynamic_lookup")
+        else()
+            target_link_libraries(assimp_py_ext_${_idx} assimp)
+        endif()
+        set_target_properties(assimp_py_ext_${_idx} PROPERTIES PREFIX "" SUFFIX "" OUTPUT_NAME "${_name}")
+    endforeach()
+elseif(EXTENSION_NAME)
+    # setup.py path
+    include_directories(${assimp_SOURCE_DIR}/include ${assimp_BINARY_DIR}/include ${Python_INCLUDE_DIRS})
+    link_directories(${Python_LIBRARY_DIRS})
+    add_library(assimp_py SHARED src/assimp_py.c)
 
-if(UNIX AND NOT APPLE)
-    # For some reason, by default, we link to static zlib and rt,
-    # explicitly linking z and rt prevents the error related to that 
-    target_link_libraries(assimp_py assimp z rt)
-elseif(APPLE)
-    target_link_libraries(assimp_py assimp "-undefined dynamic_lookup")
-else()
-    target_link_libraries(assimp_py assimp)
+    if(UNIX AND NOT APPLE)
+        # For some reason, by default, we link to static zlib and rt,
+        # explicitly linking z and rt prevents the error related to that
+        target_link_libraries(assimp_py assimp z rt)
+    elseif(APPLE)
+        target_link_libraries(assimp_py assimp "-undefined dynamic_lookup")
+    else()
+        target_link_libraries(assimp_py assimp)
+    endif()
+
+
+    # -- set the name of the build extension module
+    # EXTENSION_NAME is defined in setup.py
+    set_target_properties(
+        assimp_py
+        PROPERTIES
+            PREFIX ""
+            SUFFIX ""
+            OUTPUT_NAME "${EXTENSION_NAME}"
+    )
 endif()
-
-
-# -- set the name of the build extension module
-# EXTENSION_NAME is defined in setup.py
-set_target_properties(
-    assimp_py
-    PROPERTIES
-        PREFIX ""
-        SUFFIX ""
-        OUTPUT_NAME "${EXTENSION_NAME}"
-)
